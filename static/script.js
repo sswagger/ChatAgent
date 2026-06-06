@@ -1,7 +1,8 @@
 // Chat configuration
 let config = {
     systemPrompt: '',
-    bufferSize: 10
+    bufferSize: 10,
+    temperature: 0.7
 };
 
 let chatId = 'default';
@@ -13,6 +14,7 @@ const sendBtn = document.getElementById('sendBtn');
 const chatMessages = document.getElementById('chatMessages');
 const systemPromptInput = document.getElementById('systemPrompt');
 const bufferSizeInput = document.getElementById('bufferSize');
+const temperatureInput = document.getElementById('temperature');
 const saveConfigBtn = document.getElementById('saveConfigBtn');
 const newChatBtn = document.getElementById('newChatBtn');
 const tokenCountDisplay = document.getElementById('tokenCount');
@@ -25,8 +27,10 @@ async function init() {
         const data = await response.json();
         config.systemPrompt = data.systemPrompt;
         config.bufferSize = data.bufferSize;
+        config.temperature = data.temperature || 0.7;
         systemPromptInput.value = config.systemPrompt;
         bufferSizeInput.value = config.bufferSize;
+        temperatureInput.value = config.temperature;
         updateTokenDisplay(0);
     } catch (error) {
         console.error('Failed to load config:', error);
@@ -155,9 +159,15 @@ async function startNewChat() {
 async function saveConfig() {
     const newSystemPrompt = systemPromptInput.value;
     const newBufferSize = parseInt(bufferSizeInput.value);
+    const newTemperature = parseFloat(temperatureInput.value);
 
     if (newBufferSize < 1 || newBufferSize > 50) {
         alert('Buffer size must be between 1 and 50');
+        return;
+    }
+
+    if (newTemperature < 0 || newTemperature > 2) {
+        alert('Temperature must be between 0 and 2');
         return;
     }
 
@@ -167,13 +177,15 @@ async function saveConfig() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 systemPrompt: newSystemPrompt,
-                bufferSize: newBufferSize
+                bufferSize: newBufferSize,
+                temperature: newTemperature
             })
         });
 
         if (response.ok) {
             config.systemPrompt = newSystemPrompt;
             config.bufferSize = newBufferSize;
+            config.temperature = newTemperature;
             
             // Alert user that new chat should be started for system prompt to take effect
             alert('Configuration saved! Start a new chat for system prompt changes to take effect.');

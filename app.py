@@ -1,4 +1,6 @@
 import os
+import json
+import threading
 from flask import Flask, request, jsonify, send_from_directory
 from dotenv import load_dotenv
 import requests
@@ -7,12 +9,57 @@ load_dotenv()
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 
-# Configuration from environment
+# Configuration file path
+CONFIG_FILE = 'config.json'
+
+# Lock for thread-safe config writes
+config_lock = threading.Lock()
+
+# Configuration from environment (LLM settings stay in .env, user settings in config.json)
 LLM_API_URL = os.getenv('LLM_API_URL', 'http://localhost:11434/v1/chat/completions')
 LLM_API_KEY = os.getenv('LLM_API_KEY', '')
 LLM_MODEL = os.getenv('LLM_MODEL', 'gpt-3.5-turbo')
-SYSTEM_PROMPT = os.getenv('SYSTEM_PROMPT', 'You are a helpful AI assistant.')
-BUFFER_SIZE = int(os.getenv('BUFFER_SIZE', '10'))
+
+# User-editable config defaults
+USER_CONFIG_DEFAULTS = {
+    'systemPrompt': os.getenv('SYSTEM_PROMPT', 'You are a helpful AI assistant.'),
+    'bufferSize': int(os.getenv('BUFFER_SIZE', '10')),
+    'temperature': float(os.getenv('TEMPERATURE', '0.7')),
+    'port': int(os.getenv('PORT', '8080'))
+}
+
+# Global config dictionary (user-editable settings)
+config = {}
+
+
+def load_config():
+    """Load user config from file, fall back to defaults."""
+    global config
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                config = json.load(f)
+                # Merge with defaults for any missing keys
+                for key, value in USER_CONFIG_DEFAULTS.items():
+                    if key not in config:
+                        config[key] = value
+        except (json.JSONDecodeError, IOError):
+            config = USER_CONFIG_DEFAULTS.copy()
+    else:
+        config = USER_CONFIG_DEFAULTS.copy()
+        save_config()
+
+
+def save_config():
+    """Save config to file."""
+    global config
+    with config_lock:
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(config, f, indent=4)
+
+
+# Load config on startup
+load_config()
 
 # In-memory chat storage (replace with database for production)
 chat_history = {}
@@ -48,13 +95,13 @@ def call_llm(messages):
     }
     if LLM_API_KEY:
         headers['Authorization'] = f'Bearer {LLM_API_KEY}'
-
+    
     payload = {
         'model': LLM_MODEL,
         'messages': messages,
-        'temperature': 0.7
+        'temperature': config.get('temperature', 0.7)
     }
-
+    
     try:
         response = requests.post(LLM_API_URL, json=payload, headers=headers, timeout=30)
         response.raise_for_status()
@@ -71,20 +118,24 @@ def index():
 
 
 @app.route('/api/config', methods=['GET', 'POST'])
-def config():
-    """Get or update configuration."""
-    global SYSTEM_PROMPT, BUFFER_SIZE
+def config_endpoint():
+    """Get or update user configuration."""
+    global config
     if request.method == 'GET':
         return jsonify({
-            'systemPrompt': SYSTEM_PROMPT,
-            'bufferSize': BUFFER_SIZE
+            'systemPrompt': config.get('systemPrompt', USER_CONFIG_DEFAULTS['systemPrompt']),
+            'bufferSize': config.get('bufferSize', USER_CONFIG_DEFAULTS['bufferSize']),
+            'temperature': config.get('temperature', USER_CONFIG_DEFAULTS['temperature'])
         })
     else:
         data = request.json
         if 'systemPrompt' in data:
-            SYSTEM_PROMPT = data['systemPrompt']
+            config['systemPrompt'] = data['systemPrompt']
         if 'bufferSize' in data:
-            BUFFER_SIZE = int(data['bufferSize'])
+            config['bufferSize'] = int(data['bufferSize'])
+        if 'temperature' in data:
+            config['temperature'] = float(data['temperature'])
+        save_config()
         return jsonify({'success': True})
 
 
@@ -104,14 +155,14 @@ def chat():
 
     # Add system prompt if this is a new chat
     if len(chat_history[chat_id]) == 0:
-        chat_history[chat_id].append({'role': 'system', 'content': SYSTEM_PROMPT})
+        chat_history[chat_id].append({'role': 'system', 'content': config.get('systemPrompt', USER_CONFIG_DEFAULTS['systemPrompt'])})
 
     # Add user message
     chat_history[chat_id].append({'role': 'user', 'content': message})
 
     # Apply buffer size limit (keep system prompt + buffer)
-    if len(chat_history[chat_id]) > BUFFER_SIZE + 1:
-        chat_history[chat_id] = [chat_history[chat_id][0]] + chat_history[chat_id][-BUFFER_SIZE:]
+    if len(chat_history[chat_id]) > config.get('bufferSize', USER_CONFIG_DEFAULTS['bufferSize']) + 1:
+        chat_history[chat_id] = [chat_history[chat_id][0]] + chat_history[chat_id][-config.get('bufferSize', USER_CONFIG_DEFAULTS['bufferSize']):]
 
     # Get response from LLM
     response_content, error = call_llm(chat_history[chat_id])
@@ -121,10 +172,10 @@ def chat():
 
     # Add assistant response
     chat_history[chat_id].append({'role': 'assistant', 'content': response_content})
-
+    
     # Calculate token usage
     token_count = get_total_tokens(chat_history[chat_id])
-
+    
     return jsonify({
         'response': response_content,
         'tokenCount': token_count,
@@ -140,7 +191,7 @@ def new_chat():
     chat_history[chat_id] = []
     
     # Add system prompt to new chat
-    chat_history[chat_id].append({'role': 'system', 'content': SYSTEM_PROMPT})
+    chat_history[chat_id].append({'role': 'system', 'content': config.get('systemPrompt', USER_CONFIG_DEFAULTS['systemPrompt'])})
     
     return jsonify({
         'success': True,
@@ -164,4 +215,4 @@ def token_count():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.getenv('PORT', '8080')))
+    app.run(host='0.0.0.0', port=config.get('port', USER_CONFIG_DEFAULTS['port']))
