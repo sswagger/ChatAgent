@@ -5,6 +5,15 @@ let config = {
     temperature: 0.7
 };
 
+// MCP configuration
+let mcpConfig = {
+    enabled: false,
+    url: 'ws://localhost:3001',
+    apiKey: '',
+    connectionStatus: 'disconnected',
+    tools: []
+};
+
 let chatId = 'default';
 let tokenCount = 0;
 
@@ -20,20 +29,216 @@ const newChatBtn = document.getElementById('newChatBtn');
 const tokenCountDisplay = document.getElementById('tokenCount');
 const tokenBar = document.getElementById('tokenBar');
 
+// MCP DOM Elements
+const mcpConnectBtn = document.getElementById('mcpConnectBtn');
+const mcpDisconnectBtn = document.getElementById('mcpDisconnectBtn');
+const mcpUrlInput = document.getElementById('mcpUrl');
+const mcpApiKeyInput = document.getElementById('mcpApiKey');
+const mcpEnabledCheckbox = document.getElementById('mcpEnabled');
+const mcpStatusBadge = document.getElementById('mcpStatusBadge');
+const mcpToolsList = document.getElementById('mcpToolsList');
+const refreshToolsBtn = document.getElementById('refreshToolsBtn');
+
 // Initialize
 async function init() {
     try {
-        const response = await fetch('/api/config');
-        const data = await response.json();
-        config.systemPrompt = data.systemPrompt;
-        config.bufferSize = data.bufferSize;
-        config.temperature = data.temperature || 0.7;
+        // Load regular config
+        const configResponse = await fetch('/api/config');
+        const configData = await configResponse.json();
+        config.systemPrompt = configData.systemPrompt;
+        config.bufferSize = configData.bufferSize;
+        config.temperature = configData.temperature || 0.7;
         systemPromptInput.value = config.systemPrompt;
         bufferSizeInput.value = config.bufferSize;
         temperatureInput.value = config.temperature;
+        
+        // Load MCP config
+        const mcpResponse = await fetch('/api/mcp/config');
+        const mcpData = await mcpResponse.json();
+        mcpConfig.enabled = mcpData.enabled || false;
+        mcpConfig.url = mcpData.url || 'ws://localhost:3001';
+        mcpConfig.connectionStatus = mcpData.connectionStatus || 'disconnected';
+        mcpConfig.tools = mcpData.tools || [];
+        
+        mcpUrlInput.value = mcpConfig.url;
+        mcpEnabledCheckbox.checked = mcpConfig.enabled;
+        updateMcpUI();
+        updateMcpToolsList(mcpConfig.tools);
+        
         updateTokenDisplay(0);
     } catch (error) {
         console.error('Failed to load config:', error);
+    }
+}
+
+// Update MCP UI based on connection status
+function updateMcpUI() {
+    if (mcpConfig.connectionStatus === 'connected') {
+        mcpStatusBadge.textContent = 'Connected';
+        mcpStatusBadge.className = 'status-badge status-connected';
+        mcpConnectBtn.style.display = 'none';
+        mcpDisconnectBtn.style.display = 'inline-block';
+    } else if (mcpConfig.connectionStatus === 'error') {
+        mcpStatusBadge.textContent = 'Error';
+        mcpStatusBadge.className = 'status-badge status-error';
+        mcpConnectBtn.style.display = 'inline-block';
+        mcpDisconnectBtn.style.display = 'none';
+    } else {
+        mcpStatusBadge.textContent = 'Disconnected';
+        mcpStatusBadge.className = 'status-badge';
+        mcpConnectBtn.style.display = 'inline-block';
+        mcpDisconnectBtn.style.display = 'none';
+    }
+}
+
+// Update MCP tools list
+function updateMcpToolsList(tools) {
+    if (!tools || tools.length === 0) {
+        mcpToolsList.innerHTML = '<p class="no-tools">No tools loaded. Connect to MCP server first.</p>';
+        return;
+    }
+    
+    let html = '<div class="tools-grid">';
+    for (const tool of tools) {
+        html += `
+            <div class="tool-item">
+                <div class="tool-name">${tool.name || 'Unnamed Tool'}</div>
+                <div class="tool-desc">${tool.description || ''}</div>
+            </div>
+        `;
+    }
+    html += '</div>';
+    mcpToolsList.innerHTML = html;
+}
+
+// Connect to MCP server
+async function connectMCP() {
+    try {
+        const url = mcpUrlInput.value.trim();
+        const apiKey = mcpApiKeyInput.value.trim();
+        
+        const response = await fetch('/api/mcp/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url: url,
+                apiKey: apiKey
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to connect to MCP server');
+        }
+        
+        // Update config
+        mcpConfig.url = url;
+        mcpConfig.apiKey = apiKey;
+        mcpConfig.connectionStatus = 'connected';
+        updateMcpUI();
+        
+        // Fetch tools
+        await refreshTools();
+        
+        addMessageToUI('system', data.message || 'Connected to MCP server');
+    } catch (error) {
+        mcpConfig.connectionStatus = 'error';
+        updateMcpUI();
+        addMessageToUI('system', `Error connecting to MCP: ${error.message}`);
+    }
+}
+
+// Disconnect from MCP server
+async function disconnectMCP() {
+    try {
+        const response = await fetch('/api/mcp/disconnect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            mcpConfig.connectionStatus = 'disconnected';
+            updateMcpUI();
+            addMessageToUI('system', 'Disconnected from MCP server');
+        }
+    } catch (error) {
+        addMessageToUI('system', `Error disconnecting: ${error.message}`);
+    }
+}
+
+// Refresh MCP tools
+async function refreshTools() {
+    try {
+        const response = await fetch('/api/mcp/tools');
+        const data = await response.json();
+        
+        if (response.ok) {
+            mcpConfig.tools = data.tools || [];
+            updateMcpToolsList(mcpConfig.tools);
+            addMessageToUI('system', `Loaded ${mcpConfig.tools.length} tools from MCP`);
+        } else {
+            addMessageToUI('system', `Error fetching tools: ${data.error || 'Unknown error'}`);
+        }
+    } catch (error) {
+        addMessageToUI('system', `Error fetching tools: ${error.message}`);
+    }
+}
+
+// Save configuration
+async function saveConfig() {
+    const newSystemPrompt = systemPromptInput.value;
+    const newBufferSize = parseInt(bufferSizeInput.value);
+    const newTemperature = parseFloat(temperatureInput.value);
+    const newMcpUrl = mcpUrlInput.value.trim();
+    const newMcpApiKey = mcpApiKeyInput.value.trim();
+    const newMcpEnabled = mcpEnabledCheckbox.checked;
+    
+    if (newBufferSize < 1 || newBufferSize > 50) {
+        alert('Buffer size must be between 1 and 50');
+        return;
+    }
+    
+    if (newTemperature < 0 || newTemperature > 2) {
+        alert('Temperature must be between 0 and 2');
+        return;
+    }
+    
+    try {
+        // Save regular config
+        await fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                systemPrompt: newSystemPrompt,
+                bufferSize: newBufferSize,
+                temperature: newTemperature
+            })
+        });
+        
+        // Save MCP config
+        await fetch('/api/mcp/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url: newMcpUrl,
+                apiKey: newMcpApiKey,
+                enabled: newMcpEnabled
+            })
+        });
+        
+        config.systemPrompt = newSystemPrompt;
+        config.bufferSize = newBufferSize;
+        config.temperature = newTemperature;
+        mcpConfig.url = newMcpUrl;
+        mcpConfig.apiKey = newMcpApiKey;
+        mcpConfig.enabled = newMcpEnabled;
+        
+        alert('Configuration saved! Start a new chat for system prompt changes to take effect.');
+    } catch (error) {
+        alert(`Failed to save configuration: ${error.message}`);
     }
 }
 
@@ -155,46 +360,6 @@ async function startNewChat() {
     }
 }
 
-// Save configuration
-async function saveConfig() {
-    const newSystemPrompt = systemPromptInput.value;
-    const newBufferSize = parseInt(bufferSizeInput.value);
-    const newTemperature = parseFloat(temperatureInput.value);
-
-    if (newBufferSize < 1 || newBufferSize > 50) {
-        alert('Buffer size must be between 1 and 50');
-        return;
-    }
-
-    if (newTemperature < 0 || newTemperature > 2) {
-        alert('Temperature must be between 0 and 2');
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                systemPrompt: newSystemPrompt,
-                bufferSize: newBufferSize,
-                temperature: newTemperature
-            })
-        });
-
-        if (response.ok) {
-            config.systemPrompt = newSystemPrompt;
-            config.bufferSize = newBufferSize;
-            config.temperature = newTemperature;
-            
-            // Alert user that new chat should be started for system prompt to take effect
-            alert('Configuration saved! Start a new chat for system prompt changes to take effect.');
-        }
-    } catch (error) {
-        alert(`Failed to save configuration: ${error.message}`);
-    }
-}
-
 // Event Listeners
 sendBtn.addEventListener('click', sendMessage);
 
@@ -212,6 +377,24 @@ messageInput.addEventListener('input', function() {
 
 newChatBtn.addEventListener('click', startNewChat);
 saveConfigBtn.addEventListener('click', saveConfig);
+
+// MCP Event Listeners
+mcpConnectBtn.addEventListener('click', connectMCP);
+mcpDisconnectBtn.addEventListener('click', disconnectMCP);
+refreshToolsBtn.addEventListener('click', refreshTools);
+
+// MCP config change listeners
+mcpUrlInput.addEventListener('change', (e) => {
+    mcpConfig.url = e.target.value.trim();
+});
+
+mcpApiKeyInput.addEventListener('change', (e) => {
+    mcpConfig.apiKey = e.target.value;
+});
+
+mcpEnabledCheckbox.addEventListener('change', (e) => {
+    mcpConfig.enabled = e.target.checked;
+});
 
 // Initialize on load
 init();
