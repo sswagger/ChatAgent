@@ -8,7 +8,7 @@ let config = {
 // MCP configuration
 let mcpConfig = {
     enabled: false,
-    url: 'ws://localhost:3001',
+    url: 'http://10.24.10.62:8000/mcp',
     apiKey: '',
     connectionStatus: 'disconnected',
     tools: []
@@ -56,7 +56,7 @@ async function init() {
         const mcpResponse = await fetch('/api/mcp/config');
         const mcpData = await mcpResponse.json();
         mcpConfig.enabled = mcpData.enabled || false;
-        mcpConfig.url = mcpData.url || 'ws://localhost:3001';
+        mcpConfig.url = mcpData.url || 'http://10.24.10.62:8000/mcp';
         mcpConfig.connectionStatus = mcpData.connectionStatus || 'disconnected';
         mcpConfig.tools = mcpData.tools || [];
         
