@@ -4,7 +4,6 @@ import threading
 from flask import Flask, request, jsonify, send_from_directory
 from dotenv import load_dotenv
 import requests
-from urllib.parse import urlparse
 
 load_dotenv()
 
@@ -45,6 +44,26 @@ config = {}
 mcp_config = {}
 
 
+def add_mcp_capabilities_instruction(prompt):
+    """Add MCP capabilities instruction to system prompt."""
+    mcp_url = mcp_config.get('url', '')
+    tool_count = len(mcp_config.get('tools', []))
+    
+    instruction = f"""
+    
+IMPORTANT: This application has access to an MCP (Model Context Protocol) server at {mcp_url} that provides {tool_count} tools for controlling a robot.
+
+When asked what the robot or MCP server can do, or what tools are available, you MUST call the get_capabilities function to retrieve the list of available tools. Do NOT just make up a response.
+
+The get_capabilities function will return a list of all available tools with their descriptions. Use this information to answer questions about the robot's capabilities."""
+    
+    # Check if already has MCP instruction
+    if 'MCP (Model Context Protocol)' not in prompt:
+        return prompt.rstrip() + instruction
+    
+    return prompt
+
+
 def load_config():
     """Load user config from file, fall back to defaults."""
     global config
@@ -60,6 +79,10 @@ def load_config():
     else:
         config = USER_CONFIG_DEFAULTS.copy()
         save_config()
+    
+    # Add MCP capabilities instruction to system prompt if MCP is enabled
+    if mcp_config.get('enabled', False):
+        config['systemPrompt'] = add_mcp_capabilities_instruction(config.get('systemPrompt', ''))
 
 
 def save_config():
@@ -105,20 +128,8 @@ def init_mcp_connection():
         if not url:
             return None
         
-        # Check if URL is WebSocket or HTTP
-        parsed = urlparse(url)
-        if parsed.scheme in ('ws', 'wss'):
-            # WebSocket connection (legacy)
-            import websockets
-            import asyncio
-            
-            async def connect():
-                async with websockets.connect(url) as websocket:
-                    return websocket
-            return asyncio.run(connect())
-        else:
-            # HTTP/HTTPS connection (standard MCP JSON-RPC)
-            return {'type': 'http', 'url': url, 'apiKey': mcp_config.get('apiKey', '')}
+        # HTTP/HTTPS connection (standard MCP JSON-RPC)
+        return {'type': 'http', 'url': url, 'apiKey': mcp_config.get('apiKey', '')}
     except Exception as e:
         mcp_config['connectionStatus'] = 'error'
         mcp_config['lastError'] = str(e)
@@ -136,64 +147,40 @@ def execute_mcp_tool(tool_name, tool_input):
         if not url:
             return None, 'MCP URL not configured'
         
-        parsed = urlparse(url)
+        # HTTP/HTTPS connection with JSON-RPC 2.0 (standard MCP)
+        # Build headers, including auth only if API key is set
+        headers = {'Content-Type': 'application/json'}
+        if mcp_config.get('apiKey'):
+            headers['Authorization'] = f'Bearer {mcp_config.get("apiKey", "")}'
         
-        if parsed.scheme in ('ws', 'wss'):
-            # WebSocket connection (legacy)
-            import websockets
-            import asyncio
-            
-            async def execute():
-                async with websockets.connect(url) as websocket:
-                    message = {
-                        'type': 'execute',
-                        'tool': tool_name,
-                        'input': tool_input
-                    }
-                    if mcp_config.get('apiKey'):
-                        message['apiKey'] = mcp_config['apiKey']
-                    
-                    await websocket.send(json.dumps(message))
-                    response = await websocket.recv()
-                    result = json.loads(response)
-                    return result.get('output'), None
-            
-            return asyncio.run(execute())
-        else:
-            # HTTP/HTTPS connection with JSON-RPC 2.0 (standard MCP)
-            # Build headers, including auth only if API key is set
-            headers = {'Content-Type': 'application/json'}
-            if mcp_config.get('apiKey'):
-                headers['Authorization'] = f'Bearer {mcp_config.get("apiKey", "")}'
-            
-            response = requests.post(
-                url,
-                json={
-                    'jsonrpc': '2.0',
-                    'method': tool_name,
-                    'params': tool_input,
-                    'id': 1
-                },
-                headers=headers,
-                timeout=30
-            )
-            response.raise_for_status()
-            result = response.json()
-            
-            # Check for JSON-RPC error
-            if 'error' in result and result['error']:
-                error_msg = result['error'].get('message', 'Unknown error') if isinstance(result['error'], dict) else str(result['error'])
-                return None, error_msg
-            
-            return result.get('result'), None
+        response = requests.post(
+            url,
+            json={
+                'jsonrpc': '2.0',
+                'method': tool_name,
+                'params': tool_input,
+                'id': 1
+            },
+            headers=headers,
+            timeout=30
+        )
+        response.raise_for_status()
+        result = response.json()
+        
+        # Check for JSON-RPC error
+        if 'error' in result and result['error']:
+            error_msg = result['error'].get('message', 'Unknown error') if isinstance(result['error'], dict) else str(result['error'])
+            return None, error_msg
+        
+        return result.get('result'), None
     
     except Exception as e:
         return None, str(e)
 
 
-# Load configs on startup
-load_config()
+# Load configs on startup - load mcp_config first for add_mcp_capabilities_instruction
 load_mcp_config()
+load_config()
 
 # In-memory chat storage
 chat_history = {}
@@ -202,11 +189,13 @@ chat_history = {}
 def estimate_tokens(text):
     """Estimate token count using tiktoken."""
     try:
+        if not text or not isinstance(text, str):
+            return 0
         import tiktoken
         encoding = tiktoken.get_encoding("cl100k_base")
         return len(encoding.encode(text))
-    except:
-        return len(text) // 4
+    except Exception:
+        return len(str(text)) // 4 if text else 0
 
 
 def get_total_tokens(messages):
@@ -221,7 +210,7 @@ def get_total_tokens(messages):
     return total
 
 
-def call_llm(messages, use_tools=False):
+def call_llm(messages, use_tools=False, include_capabilities=False):
     """Call the OpenAI-compatible API."""
     headers = {
         'Content-Type': 'application/json',
@@ -235,24 +224,96 @@ def call_llm(messages, use_tools=False):
         'temperature': config.get('temperature', 0.7)
     }
     
-    if use_tools and mcp_config.get('enabled', False) and mcp_config.get('tools', []):
-        # Convert MCP tools to OpenAI function calling format
-        functions = []
+    if use_tools and mcp_config.get('enabled', False):
+        # Convert MCP tools to OpenAI tools format
+        tools = []
         for tool in mcp_config.get('tools', []):
-            functions.append({
-                'name': tool.get('name', ''),
-                'description': tool.get('description', ''),
-                'parameters': tool.get('parameters', {})
+            tools.append({
+                'type': 'function',
+                'function': {
+                    'name': tool.get('name', ''),
+                    'description': tool.get('description', ''),
+                    'parameters': tool.get('parameters', {})
+                }
             })
-        payload['functions'] = functions
-    
+        
+        # Add get_capabilities tool if requested
+        if include_capabilities:
+            tools.append({
+                'type': 'function',
+                'function': {
+                    'name': 'get_capabilities',
+                    'description': 'Get a list of all available tools from the MCP server. Use this when someone asks what the robot or MCP server can do, or what tools are available.',
+                    'parameters': {
+                        'type': 'object',
+                        'properties': {}
+                    }
+                }
+            })
+        payload['tools'] = tools
+
     try:
-        response = requests.post(LLM_API_URL, json=payload, headers=headers, timeout=30)
+        response = requests.post(LLM_API_URL, json=payload, headers=headers, timeout=100)
         response.raise_for_status()
+        print("response: ", response)
         result = response.json()
+        print("result", result)
         return result.get('choices', [{}])[0].get('message', {}), None
     except Exception as e:
         return None, str(e)
+
+
+def execute_mcp_capabilities():
+    """Execute the get_capabilities tool and return the result."""
+    try:
+        url = mcp_config.get('url', '')
+        if not url:
+            return 'Error: MCP URL not configured'
+        
+        headers = {'Content-Type': 'application/json'}
+        if mcp_config.get('apiKey'):
+            headers['Authorization'] = f'Bearer {mcp_config.get("apiKey", "")}'
+        
+        response = requests.post(
+            url,
+            json={
+                'jsonrpc': '2.0',
+                'method': 'tools/list',
+                'id': 1
+            },
+            headers=headers,
+            timeout=10
+        )
+        response.raise_for_status()
+        result = response.json()
+        
+        # Check for JSON-RPC error
+        if 'error' in result and result['error']:
+            error_msg = result['error'].get('message', 'Unknown error') if isinstance(result['error'], dict) else str(result['error'])
+            return f'Error: {error_msg}'
+        
+        # Extract tools from result
+        tools = []
+        if 'result' in result and isinstance(result['result'], dict):
+            tools = result['result'].get('tools', [])
+        elif 'result' in result:
+            tools = result['result'] if isinstance(result['result'], list) else []
+        
+        if not tools:
+            tools = result.get('tools', [])
+        
+        # Update stored tools
+        mcp_config['tools'] = tools
+        save_mcp_config()
+        
+        if tools:
+            tool_list = '\n'.join([f"- {t.get('name', 'Unknown')}: {t.get('description', 'No description')}" for t in tools])
+            return f'The MCP server at {url} has {len(tools)} tools:\n\n{tool_list}'
+        else:
+            return f'The MCP server at {url} returned no tools.'
+        
+    except Exception as e:
+        return f'Error: {str(e)}'
 
 
 def handle_tool_calls(messages, full_response, chat_id):
@@ -267,12 +328,16 @@ def handle_tool_calls(messages, full_response, chat_id):
             tool_args = json.loads(tool_call.get('function', {}).get('arguments', '{}'))
             
             # Execute the tool
-            tool_result, error = execute_mcp_tool(tool_name, tool_args)
+            if tool_name == 'get_capabilities':
+                # Special handling for get_capabilities - call MCP server directly
+                tool_response = execute_mcp_capabilities()
+                error = None
+            else:
+                tool_result, error = execute_mcp_tool(tool_name, tool_args)
+                tool_response = tool_result
             
             if error:
                 tool_response = f"Error executing tool {tool_name}: {error}"
-            else:
-                tool_response = tool_result
             
             # Add tool response to history
             messages.append({
@@ -359,71 +424,44 @@ def mcp_connect():
         if not url:
             return jsonify({'success': False, 'error': 'MCP URL not configured'}), 400
         
-        parsed = urlparse(url)
+        # HTTP/HTTPS connection (standard MCP JSON-RPC)
+        # Test connection by calling tools/list endpoint
+        try:
+            response = requests.post(
+                url,
+                json={
+                    'jsonrpc': '2.0',
+                    'method': 'tools/list',
+                    'id': 1
+                },
+                headers={'Content-Type': 'application/json'},
+                timeout=10
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            # If we get a successful response, connection is good
+            mcp_config['connectionStatus'] = 'connected'
+            mcp_config['lastError'] = None
+            
+            # Try to fetch tools automatically on connect
+            tools = []
+            if 'result' in result and 'tools' in result['result']:
+                tools = result['result']['tools']
+            elif 'result' in result:
+                # Try to parse result as tools directly
+                tools = result['result'] if isinstance(result['result'], list) else []
+            
+            mcp_config['tools'] = tools
+            save_mcp_config()
+            return jsonify({'success': True, 'message': 'Connected to MCP server', 'tools': tools})
+            
+        except Exception as e:
+            mcp_config['connectionStatus'] = 'error'
+            mcp_config['lastError'] = str(e)
+            save_mcp_config()
+            return jsonify({'success': False, 'error': str(e)}), 500
         
-        if parsed.scheme in ('ws', 'wss'):
-            # WebSocket connection (legacy)
-            import websockets
-            import asyncio
-            
-            async def test_connection():
-                try:
-                    async with websockets.connect(url) as websocket:
-                        return True, None
-                except Exception as e:
-                    return False, str(e)
-            
-            success, error = asyncio.run(test_connection())
-            
-            if success:
-                mcp_config['connectionStatus'] = 'connected'
-                mcp_config['lastError'] = None
-                save_mcp_config()
-                return jsonify({'success': True, 'message': 'Connected to MCP server'})
-            else:
-                mcp_config['connectionStatus'] = 'error'
-                mcp_config['lastError'] = error
-                save_mcp_config()
-                return jsonify({'success': False, 'error': error}), 500
-        else:
-            # HTTP/HTTPS connection (standard MCP JSON-RPC)
-            # Test connection by calling tools/list endpoint
-            try:
-                response = requests.post(
-                    url,
-                    json={
-                        'jsonrpc': '2.0',
-                        'method': 'tools/list',
-                        'id': 1
-                    },
-                    headers={'Content-Type': 'application/json'},
-                    timeout=10
-                )
-                response.raise_for_status()
-                result = response.json()
-                
-                # If we get a successful response, connection is good
-                mcp_config['connectionStatus'] = 'connected'
-                mcp_config['lastError'] = None
-                
-                # Try to fetch tools automatically on connect
-                tools = []
-                if 'result' in result and 'tools' in result['result']:
-                    tools = result['result']['tools']
-                elif 'result' in result:
-                    # Try to parse result as tools directly
-                    tools = result['result'] if isinstance(result['result'], list) else []
-                
-                mcp_config['tools'] = tools
-                save_mcp_config()
-                return jsonify({'success': True, 'message': 'Connected to MCP server', 'tools': tools})
-                
-            except Exception as e:
-                mcp_config['connectionStatus'] = 'error'
-                mcp_config['lastError'] = str(e)
-                save_mcp_config()
-                return jsonify({'success': False, 'error': str(e)}), 500
-            
     except Exception as e:
         mcp_config['connectionStatus'] = 'error'
         mcp_config['lastError'] = str(e)
@@ -440,6 +478,73 @@ def mcp_disconnect():
     return jsonify({'success': True, 'message': 'Disconnected from MCP server'})
 
 
+@app.route('/api/mcp/get-capabilities', methods=['GET'])
+def mcp_get_capabilities():
+    """Get full capabilities/information about MCP server."""
+    try:
+        url = mcp_config.get('url', '')
+        if not url:
+            return jsonify({
+                'error': 'MCP URL not configured',
+                'capabilities': None
+            }), 400
+        
+        headers = {'Content-Type': 'application/json'}
+        if mcp_config.get('apiKey'):
+            headers['Authorization'] = f'Bearer {mcp_config.get("apiKey", "")}'
+        
+        # Try to get tools from the MCP server
+        response = requests.post(
+            url,
+            json={
+                'jsonrpc': '2.0',
+                'method': 'tools/list',
+                'id': 1
+            },
+            headers=headers,
+            timeout=10
+        )
+        response.raise_for_status()
+        result = response.json()
+        
+        # Check for JSON-RPC error
+        if 'error' in result and result['error']:
+            return jsonify({
+                'error': result['error'].get('message', 'Unknown error'),
+                'capabilities': None
+            })
+        
+        # Extract tools from result
+        tools = []
+        if 'result' in result and isinstance(result['result'], dict):
+            tools = result['result'].get('tools', [])
+        elif 'result' in result:
+            tools = result['result'] if isinstance(result['result'], list) else []
+        
+        if not tools:
+            tools = result.get('tools', [])
+        
+        # Update stored tools
+        mcp_config['tools'] = tools
+        save_mcp_config()
+        
+        return jsonify({
+            'error': None,
+            'capabilities': {
+                'serverUrl': url,
+                'tools': tools,
+                'toolCount': len(tools),
+                'description': f'MCP Server at {url} provides {len(tools)} tools'
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'capabilities': None
+        }), 500
+
+
 @app.route('/api/mcp/tools', methods=['GET'])
 def mcp_tools():
     """Get list of available MCP tools."""
@@ -449,56 +554,38 @@ def mcp_tools():
         # Try to fetch tools from MCP server
         try:
             url = mcp_config.get('url', '')
-            parsed = urlparse(url)
             
-            if parsed.scheme in ('ws', 'wss'):
-                # WebSocket connection (legacy)
-                import websockets
-                import asyncio
-                
-                async def fetch_tools():
-                    async with websockets.connect(url) as websocket:
-                        message = {'type': 'list_tools'}
-                        if mcp_config.get('apiKey'):
-                            message['apiKey'] = mcp_config['apiKey']
-                        await websocket.send(json.dumps(message))
-                        response = await websocket.recv()
-                        result = json.loads(response)
-                        return result.get('tools', [])
-                
-                tools = asyncio.run(fetch_tools())
-            else:
-                # HTTP/HTTPS connection (standard MCP JSON-RPC)
-                headers = {'Content-Type': 'application/json'}
-                if mcp_config.get('apiKey'):
-                    headers['Authorization'] = f'Bearer {mcp_config.get("apiKey", "")}'
-                
-                response = requests.post(
-                    url,
-                    json={
-                        'jsonrpc': '2.0',
-                        'method': 'tools/list',
-                        'id': 1
-                    },
-                    headers=headers,
-                    timeout=10
-                )
-                response.raise_for_status()
-                result = response.json()
-                
-                # Check for JSON-RPC error
-                if 'error' in result and result['error']:
-                    return jsonify({'tools': [], 'error': result['error'].get('message', 'Unknown error') if isinstance(result['error'], dict) else str(result['error'])})
-                
-                # Extract tools from result
-                tools = []
-                if 'result' in result and isinstance(result['result'], dict):
-                    tools = result['result'].get('tools', [])
-                elif 'result' in result:
-                    tools = result['result'] if isinstance(result['result'], list) else []
-                
-                if not tools:
-                    tools = result.get('tools', [])
+            # HTTP/HTTPS connection (standard MCP JSON-RPC)
+            headers = {'Content-Type': 'application/json'}
+            if mcp_config.get('apiKey'):
+                headers['Authorization'] = f'Bearer {mcp_config.get("apiKey", "")}'
+            
+            response = requests.post(
+                url,
+                json={
+                    'jsonrpc': '2.0',
+                    'method': 'tools/list',
+                    'id': 1
+                },
+                headers=headers,
+                timeout=10
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            # Check for JSON-RPC error
+            if 'error' in result and result['error']:
+                return jsonify({'tools': [], 'error': result['error'].get('message', 'Unknown error') if isinstance(result['error'], dict) else str(result['error'])})
+            
+            # Extract tools from result
+            tools = []
+            if 'result' in result and isinstance(result['result'], dict):
+                tools = result['result'].get('tools', [])
+            elif 'result' in result:
+                tools = result['result'] if isinstance(result['result'], list) else []
+            
+            if not tools:
+                tools = result.get('tools', [])
             
             mcp_config['tools'] = tools
             save_mcp_config()
@@ -553,7 +640,8 @@ def chat():
     
     # Get response from LLM (with tool calling enabled if MCP is enabled)
     use_tools = mcp_config.get('enabled', False)
-    full_response, error = call_llm(chat_history[chat_id], use_tools=use_tools)
+    # Include get_capabilities function when MCP is enabled
+    full_response, error = call_llm(chat_history[chat_id], use_tools=use_tools, include_capabilities=use_tools)
     
     if error:
         return jsonify({'error': f'Failed to get response: {error}'}), 500
@@ -604,4 +692,4 @@ def token_count():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=config.get('port', USER_CONFIG_DEFAULTS['port']))
+    app.run(host='0.0.0.0', port=config.get('port', USER_CONFIG_DEFAULTS['port']), debug=True)

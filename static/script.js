@@ -38,6 +38,7 @@ const mcpEnabledCheckbox = document.getElementById('mcpEnabled');
 const mcpStatusBadge = document.getElementById('mcpStatusBadge');
 const mcpToolsList = document.getElementById('mcpToolsList');
 const refreshToolsBtn = document.getElementById('refreshToolsBtn');
+const getCapabilitiesBtn = document.getElementById('getCapabilitiesBtn');
 
 // Initialize
 async function init() {
@@ -184,6 +185,39 @@ async function refreshTools() {
         }
     } catch (error) {
         addMessageToUI('system', `Error fetching tools: ${error.message}`);
+    }
+}
+
+// Get MCP capabilities
+async function getMcpCapabilities() {
+    try {
+        const response = await fetch('/api/mcp/get-capabilities');
+        const data = await response.json();
+        
+        if (response.ok && data.capabilities) {
+            const capabilitiesDiv = document.getElementById('capabilitiesDisplay');
+            const contentDiv = document.getElementById('capabilitiesContent');
+            
+            let html = `<p>${data.capabilities.description}</p>`;
+            html += `<p>Server URL: <code>${data.capabilities.serverUrl}</code></p>`;
+            html += `<p>Total tools: <strong>${data.capabilities.toolCount}</strong></p>`;
+            html += `<h5>Available Tools:</h5>`;
+            html += `<ul>`;
+            for (const tool of data.capabilities.tools) {
+                html += `<li><strong>${tool.name || 'Unnamed'}</strong>: ${tool.description || 'No description'}</li>`;
+            }
+            html += `</ul>`;
+            
+            contentDiv.innerHTML = html;
+            capabilitiesDiv.style.display = 'block';
+            addMessageToUI('system', 'Capabilities retrieved from MCP server');
+        } else {
+            document.getElementById('capabilitiesDisplay').style.display = 'none';
+            addMessageToUI('system', `Error getting capabilities: ${data.error || 'Unknown error'}`);
+        }
+    } catch (error) {
+        document.getElementById('capabilitiesDisplay').style.display = 'none';
+        addMessageToUI('system', `Error getting capabilities: ${error.message}`);
     }
 }
 
@@ -382,6 +416,9 @@ saveConfigBtn.addEventListener('click', saveConfig);
 mcpConnectBtn.addEventListener('click', connectMCP);
 mcpDisconnectBtn.addEventListener('click', disconnectMCP);
 refreshToolsBtn.addEventListener('click', refreshTools);
+if (getCapabilitiesBtn) {
+    getCapabilitiesBtn.addEventListener('click', getMcpCapabilities);
+}
 
 // MCP config change listeners
 mcpUrlInput.addEventListener('change', (e) => {
