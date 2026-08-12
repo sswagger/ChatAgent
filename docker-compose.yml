@@ -2,13 +2,15 @@ version: '3.8'
 
 services:
   ai-chatbot:
-    build: .
+    build:
+      context: .
+      dockerfile: .docker/chatAgent/Dockerfile
     ports:
       - "8080:8080"
     env_file:
       - .docker/chatAgent/.env
     volumes:
-      - .:/app
+      - ./agent:/app
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/"]
