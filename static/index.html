@@ -1,72 +1,87 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Chat Assistant</title>
-    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
-    <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
-    <div class="container">
-        <!-- Sidebar -->
-        <div class="sidebar">
-            <div class="sidebar-header">
-                <h2>Settings</h2>
-                <button id="newChatBtn" class="btn-primary">New Chat</button>
-            </div>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>AI Chat Assistant</title>
 
-            <div class="config-section">
-                <label for="systemPrompt" class="config-label">System Prompt</label>
-                <textarea id="systemPrompt" class="config-input" rows="4" placeholder="Enter system prompt..."></textarea>
-            </div>
+        <link rel="icon" type="image/x-icon" href="/static/img/favicon.ico">
+        <link rel="stylesheet" href="/static/css/reset.css">
+        <link rel="stylesheet" href="/static/css/chat.css">
+        <script src="/static/js/script.js" defer></script>
+    </head>
+    <body>
+        <div class="container">
+            <div id="sidebar">
+                <!-- Sidebar -->
+                <div id="side-settings">
+                    <!-- Header -->
+                    <h1 class="header">Settings</h1>
 
-            <div class="config-section">
-                <label for="bufferSize" class="config-label">Buffer Size</label>
-                <input type="number" id="bufferSize" class="config-input" min="1" max="50" value="10">
-                <small class="config-hint">Number of messages to keep in context</small>
-            </div>
+                    <!-- System Prompt -->
+                    <div class="config-section">
+                        <label for="system-prompt">System Prompt</label>
+                        <textarea id="system-prompt" class="config-input" rows="4" placeholder="Enter system prompt..."></textarea>
+                    </div>
 
-            <div class="config-section">
-                <label for="temperature" class="config-label">Temperature</label>
-                <input type="number" id="temperature" class="config-input" min="0" max="2" step="0.1" value="0.7">
-                <small class="config-hint">Creativity level (0 = deterministic, 2 = creative)</small>
-            </div>
+                    <!-- Buffer Setting -->
+                    <div class="config-section">
+                        <label for="bufferSize">Buffer Size</label>
+                        <input type="number" id="bufferSize" class="config-input" min="1" max="50" value="10">
+                        <small>Number of messages to keep in context</small>
+                    </div>
 
-            <div class="config-section">
-                <button id="saveConfigBtn" class="btn-secondary">Save Configuration</button>
-            </div>
+                    <!-- Temperature -->
+                    <div class="config-section">
+                        <label for="temperature">Temperature</label>
+                        <input type="number" id="temperature" class="config-input" min="0" max="2" step="0.1" value="0.7">
+                        <small>Creativity level (0 = deterministic, 2 = creative)</small>
+                    </div>
 
-            <div class="token-counter">
-                <div class="token-info">
-                    <span>Token Usage</span>
-                    <span id="tokenCount">0</span>
+                    <!-- Save Button -->
+                    <div class="config-section">
+                        <button id="save-config-btn" class="btn-secondary">Save Configuration</button>
+                    </div>
                 </div>
-                <div class="token-progress">
-                    <div id="tokenBar" class="token-bar"></div>
+
+                <!-- Token Counter -->
+                <div id="token-section">
+                    <!-- Token Counter -->
+                    <div class="token-counter">
+                        <div class="token-info">
+                            <label id="token-title">Token Usage</label>
+                            <p id="token-count">0</p>
+                        </div>
+                        <div class="token-progress">
+                            <div id="tokenBar" class="token-bar"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Chat Area -->
+            <div id="chat-area">
+                <!-- Header -->
+                <div id="chat-header">
+                    <h1 class="header" id="chat-title">AI Chat Assistant</h1>
+                    <button id="new-chat-btn">New Chat</button>
+                </div>
+
+                <!-- Messages Window -->
+                <div id="chat-messages">
+                    <div class="message system">
+                        <div class="message-content">System initialized with configured system prompt.</div>
+                    </div>
+                </div>
+
+                <!-- Messages Textbox -->
+                <div class="chat-input-area">
+                    <label>
+                        <textarea id="message-input" placeholder="Type your message..."></textarea>
+                    </label>
+                    <button id="send-btn">Send</button>
                 </div>
             </div>
         </div>
-
-        <!-- Main Chat Area -->
-        <div class="chat-area">
-            <div class="chat-header">
-                <h1>AI Chat Assistant</h1>
-            </div>
-
-            <div id="chatMessages" class="chat-messages">
-                <div class="message system">
-                    <div class="message-content">System initialized with configured system prompt.</div>
-                </div>
-            </div>
-
-            <div class="chat-input-area">
-                <textarea id="messageInput" class="message-input" placeholder="Type your message..."></textarea>
-                <button id="sendBtn" class="btn-primary">Send</button>
-            </div>
-        </div>
-    </div>
-
-    <script src="/static/script.js"></script>
-</body>
+    </body>
 </html>

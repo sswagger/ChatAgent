@@ -9,15 +9,15 @@ let chatId = 'default';
 let tokenCount = 0;
 
 // DOM Elements
-const messageInput = document.getElementById('messageInput');
-const sendBtn = document.getElementById('sendBtn');
-const chatMessages = document.getElementById('chatMessages');
-const systemPromptInput = document.getElementById('systemPrompt');
+const messageInput = document.getElementById('message-input');
+const sendBtn = document.getElementById('send-btn');
+const chatMessages = document.getElementById('chat-messages');
+const systemPromptInput = document.getElementById('system-prompt');
 const bufferSizeInput = document.getElementById('bufferSize');
 const temperatureInput = document.getElementById('temperature');
-const saveConfigBtn = document.getElementById('saveConfigBtn');
-const newChatBtn = document.getElementById('newChatBtn');
-const tokenCountDisplay = document.getElementById('tokenCount');
+const saveConfigBtn = document.getElementById('save-config-btn');
+const newChatBtn = document.getElementById('new-chat-btn');
+const tokenCountDisplay = document.getElementById('token-count');
 const tokenBar = document.getElementById('tokenBar');
 
 // Initialize
