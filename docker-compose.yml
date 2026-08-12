@@ -4,11 +4,11 @@ services:
   ai-chatbot:
     build:
       context: .
-      dockerfile: .docker/chatAgent/Dockerfile
+      dockerfile: .docker/agent/Dockerfile
     ports:
       - "8080:8080"
     env_file:
-      - .docker/chatAgent/.env
+      - .docker/agent/.env
     volumes:
       - ./agent:/app
     restart: unless-stopped
