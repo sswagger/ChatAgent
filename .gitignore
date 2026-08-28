@@ -1,5 +1,8 @@
 .env
-angent/config.json
-angent/mcp_config.json
+agent/config.json
+agent/mcp_config.json
+agent/rag_config.json
 .venv
 .idea
+colorCheatSheet.txt
+playground.py
