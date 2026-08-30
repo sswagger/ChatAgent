@@ -33,7 +33,8 @@ async function init() {
 		bufferSizeInput.value = config.bufferSize;
 		temperatureInput.value = config.temperature;
 
-		updateTokenDisplay(0);
+        await startNewChat()
+        addMessageToUI('system', 'System initialized with configured system prompt.');
 	} catch (error) {
 		console.error('Failed to load config:', error);
 	}
@@ -106,6 +107,13 @@ async function sendMessage() {
 		if (!response.ok) {
 			throw new Error(data.error || 'Failed to get response');
 		}
+		await fetch('/api/log', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				log: data.response
+			})
+		});
 
 		// Remove loading indicator
 		const loadingElement = document.getElementById(loadingId);
@@ -137,7 +145,15 @@ function addMessageToUI(role, content) {
 
 	const contentDiv = document.createElement('div');
 	contentDiv.className = 'message-content';
-	contentDiv.textContent = content;
+
+	// parse response from llm
+	let messageContent = content
+	messageContent = messageContent.replaceAll("\n", "<br />")
+
+	console.log(messageContent.match(/```/g) || [])
+
+	console.log(messageContent)
+	contentDiv.innerHTML = messageContent;
 
 	messageDiv.appendChild(contentDiv);
 	chatMessages.appendChild(messageDiv);

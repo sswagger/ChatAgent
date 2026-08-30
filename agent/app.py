@@ -13,6 +13,7 @@ app = Flask(__name__, static_folder='static', static_url_path='/static')
 
 # Configuration file path
 CONFIG_FILE = 'config.json'
+LOG_FILE = 'log.txt'
 
 # Lock for thread-safe config writes
 config_lock = threading.Lock()
@@ -32,37 +33,6 @@ USER_CONFIG_DEFAULTS = {
 
 # Global config dictionaries
 config = {}
-
-
-def load_config():
-	"""Load user config from file, fall back to defaults."""
-	global config
-	if os.path.exists(CONFIG_FILE):
-		try:
-			with open(CONFIG_FILE, 'r') as f:
-				config = json.load(f)
-				for key, value in USER_CONFIG_DEFAULTS.items():
-					if key not in config:
-						config[key] = value
-		except (json.JSONDecodeError, IOError):
-			config = USER_CONFIG_DEFAULTS.copy()
-	else:
-		config = USER_CONFIG_DEFAULTS.copy()
-		save_config()
-
-
-def save_config():
-	"""Save config to file."""
-	global config
-	with config_lock:
-		with open(CONFIG_FILE, 'w') as f:
-			json.dump(config, f, indent=4)
-
-
-# Load configs on startup - load mcp_config first for add_mcp_capabilities_instruction
-load_config()
-
-# In-memory chat storage
 chat_history = {}
 
 
@@ -107,17 +77,64 @@ def call_llm(messages):
 	try:
 		response = requests.post(LLM_API_URL, json=payload, headers=headers, timeout=100)
 		response.raise_for_status()
-		print("response: ", response)
 		result = response.json()
-		print("result", result)
+
+		log_actions("call to LLM", payload, result, error=str(response.status_code))
 		return result.get('choices', [{}])[0].get('message', {}), None
 	except Exception as e:
 		return None, str(e)
 
 
+def load_config():
+	"""Load user config from file, fall back to defaults."""
+	global config
+	if os.path.exists(CONFIG_FILE):
+		try:
+			with open(CONFIG_FILE, 'r') as f:
+				config = json.load(f)
+				for key, value in USER_CONFIG_DEFAULTS.items():
+					if key not in config:
+						config[key] = value
+		except (json.JSONDecodeError, IOError):
+			config = USER_CONFIG_DEFAULTS.copy()
+	else:
+		config = USER_CONFIG_DEFAULTS.copy()
+		save_config()
+
+
+def save_config():
+	"""Save config to file."""
+	global config
+	with config_lock:
+		with open(CONFIG_FILE, 'w') as f:
+			json.dump(config, f, indent=4)
+
+
+def log_actions(path, request_payload, response_payload, is_new_chat=False, request_method="unknown", error="200"):
+	if is_new_chat:
+		with open(LOG_FILE, 'w') as log:
+			log.write(
+				f"{path}\n"+
+				f"request: json={request_payload} | method={request_method}\n"+
+				f"response: json={response_payload} | error={error}\n\n"
+			)
+	else:
+		with open(LOG_FILE, 'a') as log:
+			log.write(
+				f"{path}\n"+
+				f"request: json={request_payload} | method={request_method}\n"+
+				f"response: json={response_payload} | error={error}\n\n"
+			)
+
+
+# Load configs on startup - load mcp_config first for add_mcp_capabilities_instruction
+load_config()
+
+
 @app.route('/')
 def index():
 	"""Serve the main chat interface."""
+	log_actions("/", "", "static/index.html", is_new_chat=True)
 	return send_from_directory('static', 'index.html')
 
 
@@ -126,11 +143,13 @@ def config_endpoint():
 	"""Get or update user configuration."""
 	global config
 	if request.method == 'GET':
-		return jsonify({
+		json_config = {
 			'systemPrompt': config.get('systemPrompt', USER_CONFIG_DEFAULTS['systemPrompt']),
 			'bufferSize': config.get('bufferSize', USER_CONFIG_DEFAULTS['bufferSize']),
 			'temperature': config.get('temperature', USER_CONFIG_DEFAULTS['temperature'])
-		})
+		}
+		log_actions("/api/config", "", str(json_config), request_method=request.method)
+		return jsonify(json_config)
 	else:
 		data = request.json
 		if 'systemPrompt' in data:
@@ -140,7 +159,10 @@ def config_endpoint():
 		if 'temperature' in data:
 			config['temperature'] = float(data['temperature'])
 		save_config()
-		return jsonify({'success': True})
+
+		response = {'success': True}
+		log_actions("/api/config", data, str(response), request_method=request.method)
+		return jsonify(response)
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
@@ -150,7 +172,9 @@ def chat():
 	chat_id = data.get('chatId', 'default')
 
 	if not message:
-		return jsonify({'error': 'Message is required'}), 400
+		json_response = {'error': 'Message is required'}
+		log_actions("/api/chat", data, str(json_response), error="400")
+		return jsonify(json_response), 400
 
 	# Initialize chat history if needed
 	if chat_id not in chat_history:
@@ -171,7 +195,9 @@ def chat():
 	full_response, error = call_llm(chat_history[chat_id])
 
 	if error:
-		return jsonify({'error': f'Failed to get response: {error}'}), 500
+		json_response = {'error': f'Failed to get response= {error}'}
+		log_actions("/api/chat", data, str(json_response), error="500")
+		return jsonify(json_response), 500
 
 	# Add assistant response
 	chat_history[chat_id].append({'role': 'assistant', 'content': full_response.get('content', '')})
@@ -179,11 +205,13 @@ def chat():
 	# Calculate token usage
 	token_count = get_total_tokens(chat_history[chat_id])
 
-	return jsonify({
+	json_response = {
 		'response': full_response.get('content', ''),
 		'tokenCount': token_count,
 		'chatId': chat_id
-	})
+	}
+	log_actions("/api/chat", data, str(json_response),)
+	return jsonify(json_response)
 
 
 @app.route('/api/new-chat', methods=['POST'])
@@ -194,11 +222,13 @@ def new_chat():
 	chat_history[chat_id] = []
 	chat_history[chat_id].append({'role': 'system', 'content': config.get('systemPrompt', USER_CONFIG_DEFAULTS['systemPrompt'])})
 
-	return jsonify({
+	json_response = {
 		'success': True,
 		'chatId': chat_id,
 		'tokenCount': get_total_tokens(chat_history[chat_id])
-	})
+	}
+	log_actions("/api/new-chat", data, str(json_response), is_new_chat=True)
+	return jsonify(json_response)
 
 
 @app.route('/api/token-count', methods=['POST'])
@@ -208,11 +238,25 @@ def token_count():
 	chat_id = data.get('chatId', 'default')
 
 	if chat_id not in chat_history:
-		return jsonify({'tokenCount': 0})
+		json_response = jsonify({'tokenCount': 0})
+		log_actions("/api/token-count", data, str(json_response),)
+		return json_response
 
-	return jsonify({
-		'tokenCount': get_total_tokens(chat_history[chat_id])
-	})
+	json_response = {'tokenCount': get_total_tokens(chat_history[chat_id])}
+	log_actions("/api/token-count", data, str(json_response),)
+	return jsonify(json_response)
+
+
+@app.route('/api/log', methods=['POST'])
+def log_data():
+	data = request.json
+
+	with open(LOG_FILE, 'a') as log:
+		log.write(data.get("log") + "\n\n")
+
+	json_response = {"success": True}
+	log_actions('/api/log', data, str(json_response))
+	return jsonify(json_response)
 
 
 if __name__ == '__main__':

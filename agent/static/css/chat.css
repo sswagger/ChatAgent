@@ -145,6 +145,14 @@
 	gap: 16px;
 }
 
+.code {
+	font-family: Courier, Consolas, monospace;
+	color: #10b981;
+	background-color: #1a1a1a;
+	border-radius: 6px;
+	padding: 10px;
+}
+
 .message {
 	max-width: 85%;
 	background: #0a0a0a;

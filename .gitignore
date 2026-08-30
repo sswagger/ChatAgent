@@ -6,3 +6,4 @@ agent/rag_config.json
 .idea
 colorCheatSheet.txt
 playground.py
+agent/log.txt
