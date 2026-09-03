@@ -198,6 +198,12 @@ ul ul li, ol ol li, ol ul li, ul ol li {
 	margin-left: 32px;
 }
 
+hr {
+	border: none;
+	border-top: 3px dashed #666;
+	margin: 8px 0;
+}
+
 .message {
 	max-width: 85%;
 	background: #0a0a0a;
@@ -231,10 +237,14 @@ ul ul li, ol ol li, ol ul li, ul ol li {
 .message.user h1,
 .message.user h2,
 .message.user h3,
+.message.user h4,
+.message.user h5,
+.message.user h6,
 .message.user ul,
 .message.user ol,
 .message.user li,
-.message.user a {
+.message.user a,
+.message.user hr {
 	background: #3b82f6;
 }
 
@@ -254,7 +264,8 @@ ul ul li, ol ol li, ol ul li, ul ol li {
 .message.assistant ul,
 .message.assistant ol,
 .message.assistant li,
-.message.assistant a {
+.message.assistant a,
+.message.assistant hr {
 	background: #2a2a2a;
 }
 
