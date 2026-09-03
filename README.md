@@ -1,3 +1,3 @@
-# AI chat agent
-##### Vanilla Version
+# AI Chat Agent
+##### MCP Version
 
