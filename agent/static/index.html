@@ -19,6 +19,51 @@
 					<!-- Header -->
 					<h1 class="header">Settings</h1>
 
+                    <!-- MCP Settings Section-->
+                    <div class="config-section mcp-section">
+                        <!-- Heading -->
+                        <div id="mcp-header">
+                            <h3>MCP Settings</h3>
+                            <div id="status-badge">Disconnected</div>
+                        </div>
+
+                        <!-- Connection Button -->
+                        <div class="mcp-controls">
+                            <button id="mcpConnectBtn" class="btn-secondary">Connect</button>
+                            <button id="mcpDisconnectBtn" class="btn-secondary" style="display:none;">Disconnect</button>
+                        </div>
+
+                        <!-- URL of MCP -->
+                        <div class="config-section">
+                            <label for="mcpUrl" class="config-label">MCP Server URL</label>
+                            <input type="text" id="mcpUrl" class="config-input" placeholder="http://localhost:1000" value="http://localhost:1000">
+                            <small class="config-hint">URL of the MCP server</small>
+                        </div>
+
+                        <!-- MCP id -->
+                        <div class="config-section">
+                            <label for="mcpId" class="config-label">MCP Session Id</label>
+                            <input type="text" id="mcpId" class="config-input" placeholder="Connect for Id" disabled>
+                        </div>
+
+                        <!-- Enable MCP -->
+                        <div class="config-section">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="mcp-enabled" class="config-checkbox">
+                                Enable MCP Integration
+                            </label>
+                        </div>
+
+                        <!-- MCP Tools Display -->
+                        <div class="config-section mcp-tools-section">
+                            <h3>Available Tools</h3>
+                            <div id="mcpToolsList" class="tools-list">
+                                <p class="no-tools">No tools loaded. Connect to an MCP server first.</p>
+                            </div>
+                            <button id="refreshToolsBtn" class="btn-tertiary">Refresh Tools</button>
+                        </div>
+                    </div>
+
 					<!-- System Prompt -->
 					<div class="config-section">
 						<label for="system-prompt">System Prompt</label>
