@@ -145,6 +145,12 @@
 	gap: 16px;
 }
 
+code {
+	font-family: Courier, Consolas, monospace;
+	color: #10b981;
+	background-color: #1a1a1a;
+}
+
 pre code {
 	display: block;
 	border-radius: 6px;
@@ -152,10 +158,19 @@ pre code {
 	margin-bottom: 20px;
 }
 
-code {
-	font-family: Courier, Consolas, monospace;
+blockquote {
+	display: block;
+	border-radius: 6px;
+	padding: 10px;
+	margin-bottom: 20px;
+}
+
+blockquote p {
+	background-color: #1a1a1a !important;
+}
+
+.message a {
 	color: #10b981;
-	background-color: #1a1a1a;
 }
 
 strong {
@@ -218,7 +233,8 @@ ul ul li, ol ol li, ol ul li, ul ol li {
 .message.user h3,
 .message.user ul,
 .message.user ol,
-.message.user li {
+.message.user li,
+.message.user a {
 	background: #3b82f6;
 }
 
@@ -237,7 +253,8 @@ ul ul li, ol ol li, ol ul li, ul ol li {
 .message.assistant h3,
 .message.assistant ul,
 .message.assistant ol,
-.message.assistant li {
+.message.assistant li,
+.message.assistant a {
 	background: #2a2a2a;
 }
 
