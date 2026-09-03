@@ -145,12 +145,42 @@
 	gap: 16px;
 }
 
-.code {
+pre code {
+	display: block;
+	border-radius: 6px;
+	padding: 10px;
+	margin-bottom: 20px;
+}
+
+code {
 	font-family: Courier, Consolas, monospace;
 	color: #10b981;
 	background-color: #1a1a1a;
-	border-radius: 6px;
-	padding: 10px;
+}
+
+strong {
+	font-weight: bold;
+}
+
+em {
+	font-style: italic;
+}
+
+del {
+	text-decoration: line-through;
+}
+
+ul li, ol li {
+	margin-left: 16px;
+	width: fit-content;
+}
+
+ul li {
+	list-style-type: square;
+}
+
+ul ul li, ol ol li, ol ul li, ul ol li {
+	margin-left: 32px;
 }
 
 .message {
@@ -178,12 +208,41 @@
 	float: right;
 }
 
+.message.user p,
+.message.user pre,
+.message.user strong,
+.message.user em,
+.message.user del,
+.message.user h1,
+.message.user h2,
+.message.user h3,
+.message.user ul,
+.message.user ol,
+.message.user li {
+	background: #3b82f6;
+}
+
 .message.assistant .message-content {
 	background: #2a2a2a;
 	border-bottom-left-radius: 2px;
 }
 
-.message.system .message-content {
+.message.assistant p,
+.message.assistant pre,
+.message.assistant strong,
+.message.assistant em,
+.message.assistant del,
+.message.assistant h1,
+.message.assistant h2,
+.message.assistant h3,
+.message.assistant ul,
+.message.assistant ol,
+.message.assistant li {
+	background: #2a2a2a;
+}
+
+.message.system .message-content,
+.message.system p {
 	background: #1f2937;
 	color: #9ca3af;
 	font-size: 13px;

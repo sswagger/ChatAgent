@@ -7,6 +7,8 @@ let config = {
 
 let chatId = 'default';
 let tokenCount = 0;
+let userMessages = []
+let userMessageIndex = 0;
 
 // DOM Elements
 const messageInput = document.getElementById('message-input');
@@ -83,6 +85,12 @@ async function sendMessage() {
 	const message = messageInput.value.trim();
 	if (!message) return;
 
+	userMessages.push(message);
+	if (userMessages.length > 5) {
+		userMessages.shift();
+	}
+	userMessageIndex = userMessages.length;
+
 	// Add user message to UI
 	addMessageToUI('user', message);
 	messageInput.value = '';
@@ -107,13 +115,6 @@ async function sendMessage() {
 		if (!response.ok) {
 			throw new Error(data.error || 'Failed to get response');
 		}
-		await fetch('/api/log', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				log: data.response
-			})
-		});
 
 		// Remove loading indicator
 		const loadingElement = document.getElementById(loadingId);
@@ -147,13 +148,9 @@ function addMessageToUI(role, content) {
 	contentDiv.className = 'message-content';
 
 	// parse response from llm
-	let messageContent = content
-	messageContent = messageContent.replaceAll("\n", "<br />")
+	console.log(content)
 
-	console.log(messageContent.match(/```/g) || [])
-
-	console.log(messageContent)
-	contentDiv.innerHTML = messageContent;
+	contentDiv.innerHTML = marked.parse(content);
 
 	messageDiv.appendChild(contentDiv);
 	chatMessages.appendChild(messageDiv);
@@ -214,10 +211,30 @@ async function startNewChat() {
 // Event Listeners
 sendBtn.addEventListener('click', sendMessage);
 
-messageInput.addEventListener('keypress', (e) => {
+messageInput.addEventListener('keydown', (e) => {
 	if (e.key === 'Enter' && !e.shiftKey) {
 		e.preventDefault();
 		sendMessage();
+	}
+	else if (e.key === 'ArrowUp' && !e.shiftKey) {
+		e.preventDefault();
+        if (userMessageIndex-1 >= 0) {
+			messageInput.value = userMessages[--userMessageIndex]
+		}
+		else {
+			messageInput.value = "End of history"
+			userMessageIndex = -1
+		}
+	}
+	else if (e.key === 'ArrowDown' && !e.shiftKey) {
+		e.preventDefault();
+		if (userMessages[userMessageIndex+1] !== undefined) {
+			messageInput.value = userMessages[++userMessageIndex];
+		}
+		else {
+			messageInput.value = ""
+			userMessageIndex = userMessages.length
+		}
 	}
 });
 
