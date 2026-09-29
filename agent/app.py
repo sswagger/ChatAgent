@@ -56,8 +56,9 @@ def get_capabilities():
 		built_in_tools = [
 			{'name': 'get_capabilities', 'description': 'Get a list of all available tools from the MCP server. Use this when someone asks what tools are available.'},
 			{'name': 'get_time', 'description': 'Gets the current datetime'},
-			{'name': 'get_config', 'description': 'gets the settings for the chat agent'},
-			{'name': 'get_timezone', 'description': 'gets the users timezone'}
+			{'name': 'get_config', 'description': 'Gets the settings for the chat agent'},
+			{'name': 'get_timezone', 'description': 'Gets the users timezone'},
+			{'name': 'log_message', 'description': 'Adds a message to the log file'}
 		]
 
 		tool_list = '\n'.join([f"- {t.get('name', 'Unknown')}: {t.get('description', 'No description')}" for t in tools])
@@ -76,6 +77,17 @@ def get_timezone():
 
 def get_config():
 	return config, mcp_config
+
+def log_text(text: str):
+	try:
+		with open(LOG_FILE, 'a') as log:
+			log.write(
+				f"a note from the LLM\n"+
+				f"note: {text}\n\n"
+			)
+		return "success"
+	except Exception:
+		return "failed to log message"
 
 #=== Agent Functions ===#
 def estimate_tokens(text):
@@ -157,7 +169,7 @@ def call_llm(messages, use_tools=False, include_capabilities=False):
 				'type': 'function',
 				'function': {
 					'name': 'get_config',
-					'description': 'gets the settings for the chat agent',
+					'description': 'Gets the settings for the chat agent',
 					'parameters': {
 						'type': 'object',
 						'properties': {}
@@ -168,10 +180,21 @@ def call_llm(messages, use_tools=False, include_capabilities=False):
 				'type': 'function',
 				'function': {
 					'name': 'get_timezone',
-					'description': 'gets the users timezone',
+					'description': 'Gets the users timezone',
 					'parameters': {
 						'type': 'object',
 						'properties': {}
+					}
+				}
+			})
+			tools.append({
+				'type': 'function',
+				'function': {
+					'name': 'log_message',
+					'description': 'Adds a message to the log file',
+					'parameters': {
+						'type': 'object',
+						'properties': {'text': {'type': 'string', 'description': '(str) message you want to log'}}
 					}
 				}
 			})
@@ -368,6 +391,9 @@ def handle_tool_calls(messages, full_response):
 			elif tool_name == 'get_timezone':
 				# Special handling for get_timezone - don't call MCP server
 				tool_response = get_timezone()
+			elif tool_name == 'log_message':
+				# Special handling for log_message - don't call MCP server
+				tool_response = log_text(tool_args.get('text', "no text provided"))
 			else:
 				tool_result, error = execute_mcp_tool(tool_name, tool_args)
 				tool_response = tool_result
