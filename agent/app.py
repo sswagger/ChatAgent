@@ -1,6 +1,7 @@
 import datetime
 import os
 import json
+import time
 import threading
 from flask import Flask, request, jsonify, send_from_directory
 from dotenv import load_dotenv
@@ -52,9 +53,16 @@ mcp_id: str = ""
 def get_capabilities():
 	try:
 		tools = mcp_config['tools']
+		built_in_tools = [
+			{'name': 'get_capabilities', 'description': 'Get a list of all available tools from the MCP server. Use this when someone asks what tools are available.'},
+			{'name': 'get_time', 'description': 'Gets the current datetime'},
+			{'name': 'get_config', 'description': 'gets the settings for the chat agent'},
+			{'name': 'get_timezone', 'description': 'gets the users timezone'}
+		]
 
 		tool_list = '\n'.join([f"- {t.get('name', 'Unknown')}: {t.get('description', 'No description')}" for t in tools])
-		response = f'The MCP server at {mcp_config['url']} has {len(tools)} tools:\n\n{tool_list}'
+		tool_list += '\n'.join([f"- {t.get('name', 'Unknown')}: {t.get('description', 'No description')}" for t in built_in_tools])
+		response = f'The MCP server at {mcp_config['url']} has {len(tools)} tools:\n{tool_list}'
 	except Exception:
 		response = f"Error executing tool get_capabilities: An issue with retrieving tools"
 
@@ -62,6 +70,9 @@ def get_capabilities():
 
 def get_time():
 	return str(datetime.datetime.now())
+
+def get_timezone():
+	return time.tzname
 
 def get_config():
 	return config, mcp_config
@@ -118,7 +129,7 @@ def call_llm(messages, use_tools=False, include_capabilities=False):
 				}
 			})
 
-		# Add get_capabilities tool if requested
+		# Add built-in tools if requested
 		if include_capabilities:
 			tools.append({
 				'type': 'function',
@@ -147,6 +158,17 @@ def call_llm(messages, use_tools=False, include_capabilities=False):
 				'function': {
 					'name': 'get_config',
 					'description': 'gets the settings for the chat agent',
+					'parameters': {
+						'type': 'object',
+						'properties': {}
+					}
+				}
+			})
+			tools.append({
+				'type': 'function',
+				'function': {
+					'name': 'get_timezone',
+					'description': 'gets the users timezone',
 					'parameters': {
 						'type': 'object',
 						'properties': {}
@@ -343,6 +365,9 @@ def handle_tool_calls(messages, full_response):
 			elif tool_name == 'get_config':
 				# Special handling for get_config - don't call MCP server
 				tool_response = get_config()
+			elif tool_name == 'get_timezone':
+				# Special handling for get_timezone - don't call MCP server
+				tool_response = get_timezone()
 			else:
 				tool_result, error = execute_mcp_tool(tool_name, tool_args)
 				tool_response = tool_result
@@ -602,6 +627,7 @@ def mcp_connect():
 def mcp_disconnect():
 	"""Disconnect from MCP server."""
 	mcp_config['connectionStatus'] = 'disconnected'
+	mcp_config['tools'] = []
 	save_config(mcp_config, MCP_CONFIG_FILE)
 	return jsonify({'success': True, 'message': 'Disconnected from MCP server'})
 

@@ -66,7 +66,6 @@ async function init() {
 		mcpUrlInput.value = mcpConfig.url;
 		mcpEnabledCheckbox.checked = mcpConfig.enabled;
 		updateMcpUI();
-		updateMcpToolsList(mcpConfig.tools);
 
         await startNewChat()
         addMessageToUI('system', 'System initialized with configured system prompt.');
