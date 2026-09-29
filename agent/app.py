@@ -1,3 +1,4 @@
+import datetime
 import os
 import json
 import threading
@@ -48,6 +49,25 @@ mcp_config: dict
 config: dict
 mcp_id: str = ""
 
+#=== Built-in Tools ===#
+def get_capabilities():
+	try:
+		tools = mcp_config['tools']
+
+		tool_list = '\n'.join([f"- {t.get('name', 'Unknown')}: {t.get('description', 'No description')}" for t in tools])
+		response = f'The MCP server at {mcp_config['url']} has {len(tools)} tools:\n\n{tool_list}'
+	except Exception:
+		response = f"Error executing tool get_capabilities: An issue with retrieving tools"
+
+	return response
+
+def get_time():
+	return str(datetime.datetime.now())
+
+def get_config():
+	return USER_CONFIG_DEFAULTS, MCP_CONFIG_DEFAULTS
+
+#=== Agent Functions ===#
 def estimate_tokens(text):
 	"""Estimate token count using tiktoken."""
 	try:
@@ -105,7 +125,29 @@ def call_llm(messages, use_tools=False, include_capabilities=False):
 				'type': 'function',
 				'function': {
 					'name': 'get_capabilities',
-					'description': 'Get a list of all available tools from the MCP server. Use this when someone asks what the robot or MCP server can do, or what tools are available.',
+					'description': 'Get a list of all available tools from the MCP server. Use this when someone asks what tools are available.',
+					'parameters': {
+						'type': 'object',
+						'properties': {}
+					}
+				}
+			})
+			tools.append({
+				'type': 'function',
+				'function': {
+					'name': 'get_time',
+					'description': 'Gets the current datetime',
+					'parameters': {
+						'type': 'object',
+						'properties': {}
+					}
+				}
+			})
+			tools.append({
+				'type': 'function',
+				'function': {
+					'name': 'get_config',
+					'description': 'gets the settings for the chat agent',
 					'parameters': {
 						'type': 'object',
 						'properties': {}
@@ -294,14 +336,14 @@ def handle_tool_calls(messages, full_response):
 
 			# Execute the tool
 			if tool_name == 'get_capabilities':
-				# Special handling for get_capabilities - call MCP server directly
-				try:
-					tools = mcp_config['tools']
-
-					tool_list = '\n'.join([f"- {t.get('name', 'Unknown')}: {t.get('description', 'No description')}" for t in tools])
-					tool_response = f'The MCP server at {mcp_config['url']} has {len(tools)} tools:\n\n{tool_list}'
-				except Exception:
-					tool_response = f"Error executing tool {tool_name}: An issue with retrieving tools"
+				# Special handling for get_capabilities - don't call MCP server
+				tool_response = get_capabilities()
+			elif tool_name == 'get_time':
+				# Special handling for get_time - don't call MCP server
+				tool_response = get_time()
+			elif tool_name == 'get_config':
+				# Special handling for get_config - don't call MCP server
+				tool_response = get_config()
 			else:
 				tool_result, error = execute_mcp_tool(tool_name, tool_args)
 				tool_response = tool_result
