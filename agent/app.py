@@ -43,7 +43,6 @@ MCP_CONFIG_DEFAULTS = {
 }
 
 # Global config dictionaries
-config = {}
 chat_history = {}
 mcp_config: dict
 config: dict
@@ -65,7 +64,7 @@ def get_time():
 	return str(datetime.datetime.now())
 
 def get_config():
-	return USER_CONFIG_DEFAULTS, MCP_CONFIG_DEFAULTS
+	return config, mcp_config
 
 #=== Agent Functions ===#
 def estimate_tokens(text):
