@@ -172,6 +172,9 @@ async function sendMessage() {
 		}
 
 		// Add assistant response to UI
+		if (data.calledTools) {
+			addMessageToUI('system', data.calledTools.join("\n"));
+		}
 		addMessageToUI('assistant', data.response);
 
 		// Update token count
@@ -207,9 +210,9 @@ function addMessageToUI(role, content) {
 }
 
 // Add loading indicator to UI
-function addLoadingToUI(id) {
+function addLoadingToUI(id, sender='assistant') {
 	const messageDiv = document.createElement('div');
-	messageDiv.className = 'message assistant';
+	messageDiv.className = 'message ' + sender;
 	messageDiv.id = id;
 
 	const contentDiv = document.createElement('div');
@@ -312,6 +315,10 @@ function updateMcpToolsList(tools) {
 // Connect to MCP server
 async function connectMCP() {
     try {
+		// add a loading indicator
+		const loadingId = 'loading-' + Date.now();
+		addLoadingToUI(loadingId, 'system');
+
         const url = mcpUrlInput.value.trim();
 
         const response = await fetch('/api/mcp/connect', {
@@ -327,6 +334,12 @@ async function connectMCP() {
         if (!response.ok) {
             throw new Error(data.error || 'Failed to connect to MCP server');
         }
+
+		// Remove loading indicator
+		const loadingElement = document.getElementById(loadingId);
+		if (loadingElement) {
+			loadingElement.remove();
+		}
 
         // Update config
         mcpConfig.url = url;
@@ -370,6 +383,10 @@ async function disconnectMCP() {
 // Refresh MCP tools
 async function refreshTools() {
     try {
+		// add a loading indicator
+		const loadingId = 'loading-' + Date.now();
+		addLoadingToUI(loadingId, 'system');
+
         const response = await fetch('/api/mcp/tools');
         const data = await response.json();
 
@@ -380,6 +397,12 @@ async function refreshTools() {
         } else {
             addMessageToUI('system', `Error fetching tools: ${data.error || 'Unknown error'}`);
         }
+
+		// Remove loading indicator
+		const loadingElement = document.getElementById(loadingId);
+		if (loadingElement) {
+			loadingElement.remove();
+		}
     } catch (error) {
         addMessageToUI('system', `Error fetching tools: ${error.message}`);
     }

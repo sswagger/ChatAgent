@@ -58,17 +58,17 @@ def get_capabilities():
 			{'name': 'get_config', 'description': 'Gets the settings for the chat agent'},
 			{'name': 'get_timezone', 'description': 'Gets the users timezone'},
 			{'name': 'log_message', 'description': 'Adds a message to the log file', 'inputSchema': {
-                "additionalProperties": False,
-                "properties": {
-                    "sql": {
-                        "type": "text",
-                        "description": "(str) The text to log"
-                    }
-                },
-                "required": [
-                    "text"
-                ],
-                "type": "object"
+				"additionalProperties": False,
+				"properties": {
+					"sql": {
+						"type": "text",
+						"description": "(str) The text to log"
+					}
+				},
+				"required": [
+					"text"
+				],
+				"type": "object"
 			}}
 		]
 
@@ -213,10 +213,12 @@ def call_llm(messages, use_tools=False, include_capabilities=False):
 
 	try:
 		response = requests.post(LLM_API_URL, json=payload, headers=headers, timeout=100)
+		log_text("response1: " + str(response.json()))
 		response.raise_for_status()
 		result = response.json()
 
 		log_actions("call to LLM", payload, result, error=str(response.status_code))
+		log_text("response2: " + str(result.get('choices', [{}])[0].get('message', {})))
 		return result.get('choices', [{}])[0].get('message', {}), None
 	except Exception as e:
 		return None, str(e)
@@ -272,12 +274,11 @@ def add_mcp_capabilities_instruction(prompt):
 	tool_count = len(mcp_config.get('tools', []))
 
 	instruction = f"""
-    
 		IMPORTANT: This application has access to an MCP (Model Context Protocol) server at {mcp_url} that provides {tool_count} tools.
 		
 		When asked what the MCP server can do, or what tools are available, you MUST call the get_capabilities function to retrieve the list of available tools. Do NOT just make up a response.
 		
-		The get_capabilities function will return a list of all available tools with their descriptions. Use this information to answer questions about the robot's capabilities.
+		The get_capabilities function will return a list of all available tools with their descriptions.
 """
 
 	# Check if already has MCP instruction
@@ -307,7 +308,7 @@ def request_mcp(json_body, mcp_id=None) -> tuple[requests.Response, dict] | str:
 		json_data_start = raw_text.find('data: ')
 
 		if json_data_start != -1:
-			json_str = raw_text[json_data_start + 6:].strip()  # Skip 'data: ' prefix
+			json_str = raw_text[json_data_start + 6:].strip() # Skip 'data: ' prefix
 			try:
 				json_response = json.loads(json_str)
 				log_actions("call to MCP", json_body, json_response)
@@ -355,32 +356,32 @@ def execute_mcp_tool(tool_name, tool_input):
 	if not url:
 		return None, 'MCP URL not configured'
 
+	response = ()
 	try:
 		# HTTP/HTTPS connection with JSON-RPC 2.0 (standard MCP)
 		# Build headers, including auth only if API key is set
-		response = request_mcp({
+		response = request_mcp(
+			{
 				'jsonrpc': '2.0',
 				'method': 'tools/call',
 				'params': {
-			        'name': tool_name,
-			        'arguments': tool_input
+					'name': tool_name,
+					'arguments': tool_input
 				},
 				'id': 1
 			},
 			mcp_id
 		)
-		if type(response) is str:
-			return jsonify({'success': False, 'error': 'failed to execute tool call | '.format(response)}), 400
-
 		return response[1].get('result').get('structuredContent').get('result'), None
-	except Exception as e:
-		return None, str(e)
+	except AttributeError:
+		return None, response[1].get('result').get('content')[0].get('text')
 
 
 def handle_tool_calls(messages, full_response):
 	"""Handle tool calls from LLM response."""
 	message_content = full_response.get('content', '')
 	tool_calls = full_response.get('tool_calls', [])
+	tool_log = []
 
 	# If there are tool calls, execute them and continue
 	if tool_calls:
@@ -406,34 +407,46 @@ def handle_tool_calls(messages, full_response):
 				# Special handling for log_message - don't call MCP server
 				tool_response = log_text(tool_args.get('text', "no text provided"))
 			else:
-				tool_result, error = execute_mcp_tool(tool_name, tool_args)
-				tool_response = tool_result
+				tool_response, error = execute_mcp_tool(tool_name, tool_args)
 
-			if error:
-				tool_response = f"Error executing tool {tool_name}: {tool_response.get('error')} | {error}"
-
-			# Add tool response to history
 			messages.append({
 				'role': 'assistant',
 				'content': None,
 				'tool_calls': [tool_call]
 			})
-			messages.append({
-				'role': 'tool',
-				'name': tool_name,
-				'content': str(tool_response)
-			})
 
-			# Get next response from LLM
-			next_response, error = call_llm(messages, use_tools=False)
+			new_tool = tool_name + "("
+			for p in tool_args:
+				new_tool += f"{p}: {tool_args[p]}, "
+			if tool_args:
+				new_tool = new_tool[:-2]
+			new_tool += ")"
+			tool_log.append(new_tool)
+
 			if error:
-				return f"Error: {error}"
-			if next_response:
-				return next_response.get('content', '')
+				# add error to history
+				messages.append({
+					'role': 'tool',
+					'name': tool_name,
+					'content': "Error: " + str(error)
+				})
+			else:
+				# Add tool response to history
+				messages.append({
+					'role': 'tool',
+					'name': tool_name,
+					'content': str(tool_response)
+				})
 
-		return message_content
+		# Get next response from LLM
+		next_response, error = call_llm(messages, use_tools=False)
+		if error:
+			return f"Error: {error}", tool_log
+		if next_response:
+			return next_response.get('content', ''), tool_log
+		return message_content, None
 
-	return message_content
+	return message_content, None
 
 
 # Load configs on startup - load mcp_config first for add_mcp_capabilities_instruction
@@ -516,7 +529,7 @@ def chat():
 		return jsonify(json_response), 500
 
 	# Handle tool calls if any
-	response_content = handle_tool_calls(chat_history[chat_id], full_response)
+	response_content, called_tools = handle_tool_calls(chat_history[chat_id], full_response)
 
 	# Add assistant response
 	chat_history[chat_id].append({'role': 'assistant', 'content': response_content})
@@ -527,9 +540,10 @@ def chat():
 	json_response = {
 		'response': response_content,
 		'tokenCount': token_count,
-		'chatId': chat_id
+		'chatId': chat_id,
+		'calledTools': called_tools
 	}
-	log_actions("/api/chat", data, str(json_response),)
+	log_actions("/api/chat", data, str(json_response))
 	return jsonify(json_response)
 
 
@@ -615,17 +629,17 @@ def mcp_connect():
 		try:
 			response = request_mcp(
 				{
-				  "jsonrpc": "2.0",
-				  "id": 1,
-				  "method": "initialize",
-				  "params": {
-				    "protocolVersion": "2024-11-05",
-				    "capabilities": {},
-				    "clientInfo": {
-				      "name": "Chat Assistant",
-				      "version": "1.0.0"
-				    }
-				  }
+					"jsonrpc": "2.0",
+					"id": 1,
+					"method": "initialize",
+					"params": {
+						"protocolVersion": "2024-11-05",
+						"capabilities": {},
+						"clientInfo": {
+							"name": "Chat Assistant",
+							"version": "1.0.0"
+						}
+					}
 				}
 			)
 			if type(response) is str:
