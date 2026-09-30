@@ -6,7 +6,6 @@ import threading
 from flask import Flask, request, jsonify, send_from_directory
 from dotenv import load_dotenv
 import requests
-from requests import Response
 
 # load the environment variables for LLM configuration
 load_dotenv()
@@ -23,7 +22,7 @@ LOG_FILE = 'log.txt'
 config_lock = threading.Lock()
 
 # Configuration from environment (LLM settings stay in .env, user settings in config.json)
-LLM_API_URL = os.getenv('LLM_API_URL', 'http://localhost:11434/v1/chat/completions')
+LLM_API_URL = os.getenv('LLM_API_URL', '')
 LLM_API_KEY = os.getenv('LLM_API_KEY', '')
 LLM_MODEL = os.getenv('LLM_MODEL', 'gpt-3.5-turbo')
 
@@ -58,11 +57,23 @@ def get_capabilities():
 			{'name': 'get_time', 'description': 'Gets the current datetime'},
 			{'name': 'get_config', 'description': 'Gets the settings for the chat agent'},
 			{'name': 'get_timezone', 'description': 'Gets the users timezone'},
-			{'name': 'log_message', 'description': 'Adds a message to the log file'}
+			{'name': 'log_message', 'description': 'Adds a message to the log file', 'inputSchema': {
+                "additionalProperties": False,
+                "properties": {
+                    "sql": {
+                        "type": "text",
+                        "description": "(str) The text to log"
+                    }
+                },
+                "required": [
+                    "text"
+                ],
+                "type": "object"
+			}}
 		]
 
-		tool_list = '\n'.join([f"- {t.get('name', 'Unknown')}: {t.get('description', 'No description')}" for t in tools])
-		tool_list += '\n'.join([f"- {t.get('name', 'Unknown')}: {t.get('description', 'No description')}" for t in built_in_tools])
+		tool_list = '\n'.join([f"- {t.get('name', 'Unknown')}: {t.get('description', 'No description')} | params: {t.get('inputSchema', 'No parameters')}" for t in tools])
+		tool_list += '\n'.join([f"- {t.get('name', 'Unknown')}: {t.get('description', 'No description')} | params: {t.get('inputSchema', 'No parameters')}" for t in built_in_tools])
 		response = f'The MCP server at {mcp_config['url']} has {len(tools)} tools:\n{tool_list}'
 	except Exception:
 		response = f"Error executing tool get_capabilities: An issue with retrieving tools"
@@ -276,7 +287,7 @@ def add_mcp_capabilities_instruction(prompt):
 	return prompt
 
 
-def request_mcp(json_body, mcp_id=None) -> tuple[Response, dict] | str:
+def request_mcp(json_body, mcp_id=None) -> tuple[requests.Response, dict] | str:
 	headers = {
 		'Content-Type': 'application/json',
 		'Accept': 'application/json, text/event-stream'
@@ -465,6 +476,7 @@ def config_endpoint():
 		response = {'success': True}
 		log_actions("/api/config", data, str(response), request_method=request.method)
 		return jsonify(response)
+
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
