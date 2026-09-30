@@ -213,12 +213,10 @@ def call_llm(messages, use_tools=False, include_capabilities=False):
 
 	try:
 		response = requests.post(LLM_API_URL, json=payload, headers=headers, timeout=100)
-		log_text("response1: " + str(response.json()))
 		response.raise_for_status()
 		result = response.json()
 
 		log_actions("call to LLM", payload, result, error=str(response.status_code))
-		log_text("response2: " + str(result.get('choices', [{}])[0].get('message', {})))
 		return result.get('choices', [{}])[0].get('message', {}), None
 	except Exception as e:
 		return None, str(e)
