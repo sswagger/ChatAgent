@@ -370,6 +370,8 @@ def execute_mcp_tool(tool_name, tool_input):
 			},
 			mcp_id
 		)
+		if type(response) is str:
+			return None, "MCP session Id timed out; reconnect for a new Id"
 		return response[1].get('result').get('structuredContent').get('result'), None
 	except AttributeError:
 		return None, response[1].get('result').get('content')[0].get('text')
