@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 	<head>
 		<meta charset="UTF-8">
@@ -18,6 +18,59 @@
 				<div id="side-settings">
 					<!-- Header -->
 					<h1 class="header">Settings</h1>
+
+					<!-- RAG Settings Section -->
+					<div class="config-section rag-section">
+						<!-- Heading -->
+						<div id="rag-header">
+							<h3>RAG Knowledge Base</h3>
+							<div id="rag-status-badge">Initializing...</div>
+						</div>
+
+						<!-- Enable RAG Toggle -->
+						<div class="config-section">
+							<label class="checkbox-label">
+								<input type="checkbox" id="rag-enabled" class="config-checkbox">
+								Enable RAG (Document Search)
+							</label>
+						</div>
+
+						<!-- File Upload -->
+						<div class="config-section">
+							<label for="rag-upload" class="config-label">Upload Document</label>
+							<input type="file" id="rag-upload" class="rag-upload-input" accept=".pdf,.docx,.txt,.md">
+							<small class="config-hint">Supports PDF, DOCX, TXT, and Markdown files</small>
+						</div>
+
+						<!-- Upload Button -->
+						<div class="config-section">
+							<button id="rag-upload-btn" class="btn-secondary">Upload Document</button>
+							<button id="rag-refresh-btn" class="btn-tertiary">Refresh</button>
+						</div>
+
+						<!-- Document List -->
+						<div class="config-section rag-documents-section">
+							<h3>Uploaded Documents</h3>
+							<div id="rag-documents-list" class="documents-list">
+								<p class="no-documents">No documents uploaded yet.</p>
+							</div>
+						</div>
+
+						<!-- Clear All Button -->
+						<div class="config-section">
+							<button id="rag-clear-btn" class="btn-danger">Clear All Documents</button>
+						</div>
+
+						<!-- RAG Stats -->
+						<div class="config-section rag-stats-section">
+							<h3>RAG Status</h3>
+							<div class="rag-stats">
+								<p>Documents: <span id="rag-doc-count">0</span></p>
+								<p>Chunks: <span id="rag-chunk-count">0</span></p>
+								<p>Status: <span id="rag-status">Initializing...</span></p>
+							</div>
+						</div>
+					</div>
 
 					<!-- System Prompt -->
 					<div class="config-section">
@@ -80,7 +133,13 @@
 					<label>
 						<textarea id="message-input" placeholder="Type your message..."></textarea>
 					</label>
-					<button id="send-btn">Send</button>
+					<div class="input-actions">
+						<label class="checkbox-label" style="display: flex; align-items: center; margin: 0 10px;">
+							<input type="checkbox" id="rag-mode-toggle" class="config-checkbox" style="margin-right: 5px;">
+							Use RAG
+						</label>
+						<button id="send-btn">Send</button>
+					</div>
 				</div>
 			</div>
 		</div>

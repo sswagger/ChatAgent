@@ -13,6 +13,7 @@ app = Flask(__name__, static_folder='static', static_url_path='/static')
 
 # Configuration file path
 CONFIG_FILE = 'config.json'
+RAG_CONFIG_FILE = 'rag_config.json'
 LOG_FILE = 'log.txt'
 
 # Lock for thread-safe config writes
@@ -34,6 +35,9 @@ USER_CONFIG_DEFAULTS = {
 # Global config dictionaries
 config = {}
 chat_history = {}
+
+# Import RAG service
+from rag_service import get_rag_service, RAGService, reload_rag_config
 
 
 def estimate_tokens(text):
@@ -164,12 +168,23 @@ def config_endpoint():
 		log_actions("/api/config", data, str(response), request_method=request.method)
 		return jsonify(response)
 
+# Global RAG service instance
+rag_service = None
+
+def get_rag_service_instance():
+	"""Get or create RAG service instance."""
+	global rag_service
+	if rag_service is None:
+		rag_service = get_rag_service()
+	return rag_service
+
 @app.route('/api/chat', methods=['POST'])
 def chat():
-	"""Handle chat message with optional MCP tool integration."""
+	"""Handle chat message with optional MCP and RAG integration."""
 	data = request.json
 	message = data.get('message', '')
 	chat_id = data.get('chatId', 'default')
+	use_rag = data.get('useRag', False)
 
 	if not message:
 		json_response = {'error': 'Message is required'}
@@ -182,7 +197,12 @@ def chat():
 
 	# Add system prompt if this is a new chat
 	if len(chat_history[chat_id]) == 0:
-		chat_history[chat_id].append({'role': 'system', 'content': config.get('systemPrompt', USER_CONFIG_DEFAULTS['systemPrompt'])})
+		prompt = config.get('systemPrompt', USER_CONFIG_DEFAULTS['systemPrompt'])
+		# Add RAG instruction if enabled
+		rag_service = get_rag_service_instance()
+		if rag_service.config.get('enabled', False):
+			prompt += "\n\nYou have access to uploaded documents. When the user asks about a topic, you can retrieve relevant information from the knowledge base and cite your sources. If no relevant context exists in the documents, say so honestly."
+		chat_history[chat_id].append({'role': 'system', 'content': prompt})
 
 	# Add user message
 	chat_history[chat_id].append({'role': 'user', 'content': message})
@@ -190,6 +210,17 @@ def chat():
 	# Apply buffer size limit
 	if len(chat_history[chat_id]) > config.get('bufferSize', USER_CONFIG_DEFAULTS['bufferSize']) + 1:
 		chat_history[chat_id] = [chat_history[chat_id][0]] + chat_history[chat_id][-config.get('bufferSize', USER_CONFIG_DEFAULTS['bufferSize']):]
+
+	# If RAG is enabled, retrieve relevant documents and augment the prompt
+	if use_rag:
+		rag_service = get_rag_service_instance()
+		if rag_service.config.get('enabled', False) and rag_service.config.get('ready', False):
+			try:
+				augmented_prompt, docs = rag_service.query_documents(message)
+				chat_history[chat_id][-1]['content'] = augmented_prompt
+				json_response['sources'] = docs
+			except Exception as e:
+				log_actions("/api/chat/rag", data, str({'error': str(e)}), error="500")
 
 	# Include get_capabilities function when MCP is enabled
 	full_response, error = call_llm(chat_history[chat_id])
@@ -257,6 +288,126 @@ def log_data():
 	json_response = {"success": True}
 	log_actions('/api/log', data, str(json_response))
 	return jsonify(json_response)
+
+
+#=== RAG API Endpoints ===#
+
+@app.route('/api/rag/upload', methods=['POST'])
+def rag_upload():
+	"""Upload and process a document."""
+	rag_service = get_rag_service_instance()
+	
+	if not rag_service.config.get('enabled', False):
+		return jsonify({'success': False, 'error': 'RAG is not enabled'}), 400
+
+	if 'file' in request.files:
+		# Handle file upload
+		file = request.files['file']
+		if file.filename == '':
+			return jsonify({'success': False, 'error': 'No file selected'}), 400
+		
+		# Save file temporarily
+		import tempfile
+		with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp:
+			file.save(tmp.name)
+			tmp_path = tmp.name
+		
+		try:
+			result = rag_service.upload_document(tmp_path, file_name=file.filename)
+			return jsonify(result)
+		finally:
+			if os.path.exists(tmp_path):
+				os.unlink(tmp_path)
+	
+	elif request.is_json:
+		# Handle direct content upload
+		data = request.json
+		content = data.get('content', '')
+		filename = data.get('filename', 'document.txt')
+		
+		result = rag_service.upload_document(
+			file_path=None,
+			file_content=content,
+			file_name=filename
+		)
+		return jsonify(result)
+	
+	return jsonify({'success': False, 'error': 'No file or content provided'}), 400
+
+
+@app.route('/api/rag/documents', methods=['GET'])
+def rag_list_documents():
+	"""List all uploaded documents."""
+	rag_service = get_rag_service_instance()
+	documents = rag_service.list_documents()
+	return jsonify({'documents': documents})
+
+
+@app.route('/api/rag/document/<doc_id>', methods=['DELETE'])
+def rag_delete_document(doc_id):
+	"""Delete a document."""
+	rag_service = get_rag_service_instance()
+	result = rag_service.delete_document(doc_id)
+	return jsonify(result)
+
+
+@app.route('/api/rag/clear', methods=['POST'])
+def rag_clear():
+	"""Clear all documents."""
+	rag_service = get_rag_service_instance()
+	result = rag_service.clear_all()
+	return jsonify(result)
+
+
+@app.route('/api/rag/stats', methods=['GET'])
+def rag_stats():
+	"""Get RAG statistics."""
+	rag_service = get_rag_service_instance()
+	stats = rag_service.get_stats()
+	return jsonify(stats)
+
+
+@app.route('/api/rag/config', methods=['GET', 'POST'])
+def rag_config_endpoint():
+	"""Get or update RAG configuration."""
+	global rag_service
+	
+	if request.method == 'GET':
+		rag_service = get_rag_service_instance()
+		return jsonify({
+			'enabled': rag_service.config.get('enabled', True),
+			'url': rag_service.config.get('url', ''),
+			'collectionName': rag_service.config.get('collectionName', ''),
+			'topK': rag_service.config.get('topK', 4),
+			'similarityThreshold': rag_service.config.get('similarityThreshold', 0.25),
+			'ready': rag_service.config.get('ready', False)
+		})
+	else:
+		data = request.json
+		if 'enabled' in data:
+			rag_service = get_rag_service_instance()
+			rag_service.config['enabled'] = bool(data['enabled'])
+		
+		if 'url' in data:
+			rag_service = get_rag_service_instance()
+			rag_service.config['url'] = data['url']
+		
+		if 'collectionName' in data:
+			rag_service = get_rag_service_instance()
+			rag_service.config['collectionName'] = data['collectionName']
+		
+		if 'topK' in data:
+			rag_service = get_rag_service_instance()
+			rag_service.config['topK'] = int(data['topK'])
+		
+		if 'similarityThreshold' in data:
+			rag_service = get_rag_service_instance()
+			rag_service.config['similarityThreshold'] = float(data['similarityThreshold'])
+		
+		# Reload service with new config
+		rag_service = reload_rag_config()
+		
+		return jsonify({'success': True})
 
 
 if __name__ == '__main__':

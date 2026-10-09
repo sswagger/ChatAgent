@@ -376,3 +376,153 @@ hr {
 #side-settings::-webkit-scrollbar-thumb:hover {
 	background: #555;
 }
+
+/* RAG Styles */
+.rag-section {
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+    background: #151515;
+}
+
+.rag-section h3 {
+    margin: 0 0 10px 0;
+    font-size: 13px;
+    color: #3b82f6;
+}
+
+#rag-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+#rag-status-badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: bold;
+    background: #333;
+    color: #aaa;
+}
+
+#rag-documents-list {
+    max-height: 150px;
+    overflow-y: auto;
+    margin-bottom: 10px;
+}
+
+.document-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px;
+    background: #2a2a2a;
+    border-radius: 6px;
+    margin-bottom: 8px;
+}
+
+.doc-name {
+    font-weight: bold;
+    color: #e0e0e0;
+}
+
+.doc-info {
+    font-size: 11px;
+    color: #888;
+    margin: 0 10px;
+}
+
+.rag-stats {
+    display: flex;
+    gap: 20px;
+}
+
+.rag-stats p {
+    margin: 5px 0;
+    font-size: 12px;
+}
+
+.rag-stats span {
+    font-weight: bold;
+    color: #10b981;
+}
+
+.rag-upload-input {
+    width: 100%;
+    padding: 8px;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 6px;
+    color: #e0e0e0;
+    font-size: 13px;
+}
+
+.btn-tertiary {
+    padding: 10px 20px;
+    background: #6b7280;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-size: 14px;
+    transition: background 0.2s;
+    margin-left: 10px;
+}
+
+.btn-tertiary:hover {
+    background: #4b5563;
+}
+
+.btn-danger {
+    padding: 10px 20px;
+    background: #dc2626;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-size: 14px;
+    transition: background 0.2s;
+}
+
+.btn-danger:hover {
+    background: #b91c1c;
+}
+
+.btn-small {
+    padding: 4px 8px;
+    font-size: 11px;
+}
+
+.config-label {
+    font-weight: 500;
+    margin-bottom: 5px;
+    display: block;
+}
+
+.config-hint {
+    font-size: 10px;
+    color: #666;
+    margin-top: 5px;
+}
+
+/* RAG sources display */
+.rag-sources {
+    background: #1f2937;
+    color: #9ca3af;
+    padding: 10px 16px;
+    border-radius: 8px;
+    margin: 10px 0;
+    font-size: 12px;
+}
+
+.rag-sources strong {
+    color: #3b82f6;
+}
+
+/* Input actions container */
+.input-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
