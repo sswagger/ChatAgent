@@ -38,8 +38,8 @@ services:
 
 networks:
   chat-agent:
-    external: true
     name: chat-agent
+    driver: bridge
 
 volumes:
   chroma-data:
