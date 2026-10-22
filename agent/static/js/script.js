@@ -314,11 +314,10 @@ function updateMcpToolsList(tools) {
 
 // Connect to MCP server
 async function connectMCP() {
+	// add a loading indicator
+	const loadingId = 'loading-' + Date.now();
+	addLoadingToUI(loadingId, 'system');
     try {
-		// add a loading indicator
-		const loadingId = 'loading-' + Date.now();
-		addLoadingToUI(loadingId, 'system');
-
         const url = mcpUrlInput.value.trim();
 
         const response = await fetch('/api/mcp/connect', {
@@ -352,6 +351,12 @@ async function connectMCP() {
 
         addMessageToUI('system', data.message || 'Connected to MCP server');
     } catch (error) {
+		// Remove loading indicator
+		const loadingElement = document.getElementById(loadingId);
+		if (loadingElement) {
+			loadingElement.remove();
+		}
+
         mcpConfig.connectionStatus = 'error';
         updateMcpUI();
         addMessageToUI('system', `Error connecting to MCP: ${error.message}`);
