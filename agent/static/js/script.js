@@ -311,10 +311,6 @@ async function connectMCP() {
 	const loadingId = 'loading-' + Date.now();
 	addLoadingToUI(loadingId, 'system');
     try {
-		// add a loading indicator
-		const loadingId = 'loading-' + Date.now();
-		addLoadingToUI(loadingId, 'system');
-
         const url = mcpUrlInput.value.trim();
 
         const response = await fetch('/api/mcp/connect', {
