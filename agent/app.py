@@ -134,7 +134,7 @@ load_config()
 @app.route('/')
 def index():
 	"""Serve the main chat interface."""
-	log_actions("/", "", "static/index.html", is_new_chat=True)
+	log_actions("/", "", "static/index.html", request_method="GET", is_new_chat=True)
 	return send_from_directory('static', 'index.html')
 
 
@@ -174,7 +174,7 @@ def chat():
 
 	if not message:
 		json_response = {'error': 'Message is required'}
-		log_actions("/api/chat", data, str(json_response), error="400")
+		log_actions("/api/chat", data, str(json_response), request_method="POST", error="400")
 		return jsonify(json_response), 400
 
 	# Initialize chat history if needed
@@ -197,7 +197,7 @@ def chat():
 
 	if error:
 		json_response = {'error': f'Failed to get response= {error}'}
-		log_actions("/api/chat", data, str(json_response), error="500")
+		log_actions("/api/chat", data, str(json_response), request_method="POST", error="500")
 		return jsonify(json_response), 500
 
 	# Add assistant response
@@ -211,7 +211,7 @@ def chat():
 		'tokenCount': token_count,
 		'chatId': chat_id
 	}
-	log_actions("/api/chat", data, str(json_response),)
+	log_actions("/api/chat", data, str(json_response), request_method="POST")
 	return jsonify(json_response)
 
 
@@ -228,7 +228,7 @@ def new_chat():
 		'chatId': chat_id,
 		'tokenCount': get_total_tokens(chat_history[chat_id])
 	}
-	log_actions("/api/new-chat", data, str(json_response), is_new_chat=True)
+	log_actions("/api/new-chat", data, str(json_response), request_method="POST", is_new_chat=True)
 	return jsonify(json_response)
 
 
@@ -240,11 +240,11 @@ def token_count():
 
 	if chat_id not in chat_history:
 		json_response = jsonify({'tokenCount': 0})
-		log_actions("/api/token-count", data, str(json_response),)
+		log_actions("/api/token-count", data, str(json_response), request_method="POST")
 		return json_response
 
 	json_response = {'tokenCount': get_total_tokens(chat_history[chat_id])}
-	log_actions("/api/token-count", data, str(json_response),)
+	log_actions("/api/token-count", data, str(json_response), request_method="POST")
 	return jsonify(json_response)
 
 
@@ -256,7 +256,7 @@ def log_data():
 		log.write(data.get("log") + "\n\n")
 
 	json_response = {"success": True}
-	log_actions('/api/log', data, str(json_response))
+	log_actions('/api/log', data, str(json_response), request_method="POST")
 	return jsonify(json_response)
 
 
