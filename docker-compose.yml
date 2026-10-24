@@ -1,6 +1,22 @@
-version: '3.8'
-
 services:
+  chromadb:
+    image: ghcr.io/chroma-core/chroma:latest
+    container_name: chromadb
+    ports:
+      - "8000:8000"
+    env_file:
+      - .docker/agent/.env
+    volumes:
+      - chroma-data:/chroma/chroma
+    restart: unless-stopped
+    networks:
+      - chat-agent
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v2/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   ai-chatbot:
     build:
       context: .
@@ -12,8 +28,18 @@ services:
     volumes:
       - ./agent:/app
     restart: unless-stopped
+    networks:
+      - chat-agent
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/"]
       interval: 30s
       timeout: 10s
       retries: 3
+
+networks:
+  chat-agent:
+    name: chat-agent
+    driver: bridge
+
+volumes:
+  chroma-data:

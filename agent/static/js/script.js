@@ -1,35 +1,64 @@
+//=== Configs ===\\
+// RAG configuration
+let ragConfig = {
+	enabled: true,
+	collectionName: "documents",
+	topK: 4,
+	similarityThreshold: 0.25,
+	chromaPath: "./chroma_data",
+	status: false,
+	chunkSize: 500,
+	chunkOverlap: 50
+};
+
 // Chat configuration
-let chatId = 'default';
+let chatId = "default";
 let tokenCount = 0;
 let userMessages = []
 let userMessageIndex = 0;
 
-// DOM Elements
-const messageInput = document.getElementById('message-input');
-const sendBtn = document.getElementById('send-btn');
-const chatMessages = document.getElementById('chat-messages');
-const systemPromptInput = document.getElementById('system-prompt');
-const bufferSizeInput = document.getElementById('buffer-size');
-const temperatureInput = document.getElementById('temperature');
-const saveConfigBtn = document.getElementById('save-config-btn');
-const newChatBtn = document.getElementById('new-chat-btn');
-const tokenCountDisplay = document.getElementById('token-count');
-const tokenBar = document.getElementById('token-bar');
+//=== DOM Elements ===\\
+const messageInput = document.getElementById("message-input");
+const sendBtn = document.getElementById("send-btn");
+const chatMessages = document.getElementById("chat-messages");
+const systemPromptInput = document.getElementById("system-prompt");
+const bufferSizeInput = document.getElementById("buffer-size");
+const temperatureInput = document.getElementById("temperature");
+const saveConfigBtn = document.getElementById("save-config-btn");
+const newChatBtn = document.getElementById("new-chat-btn");
+const tokenCountDisplay = document.getElementById("token-count");
+const tokenBar = document.getElementById("token-bar");
+
+//=== RAG DOM Elements ===\\
+const ragEnabledCheckbox = document.getElementById("rag-enabled");
+const ragTopK = document.getElementById("top-k");
+const ragSimilarityThreshold = document.getElementById("sim-threshold");
+const ragChunkSize = document.getElementById("chunk-size");
+const ragChunkOverlap = document.getElementById("chunk-overlap");
+const ragUploadInput = document.getElementById("rag-upload");
+const ragUploadBtn = document.getElementById("rag-upload-btn");
+const ragRefreshBtn = document.getElementById("rag-refresh-btn");
+const ragClearBtn = document.getElementById("rag-clear-btn");
+const ragDocsList = document.getElementById("rag-documents-list");
+const ragStatusBadge = document.getElementById("status-badge");
 
 // Initialize
 async function init() {
 	try {
 		// Load regular config
-		const configResponse = await fetch('/api/config');
+		const configResponse = await fetch("/api/config");
 		const configData = await configResponse.json();
 		systemPromptInput.value = configData.systemPrompt;
 		bufferSizeInput.value = configData.bufferSize;
 		temperatureInput.value = configData.temperature;
 
-        await startNewChat()
-        addMessageToUI('system', 'System initialized with configured system prompt.');
+		await startNewChat()
+		addMessageToUI("system", "System initialized with configured system prompt.");
+
+		// Load RAG config
+		await loadRagConfig();
 	} catch (error) {
-		console.error('Failed to load config:', error);
+		console.error("Failed to load config:", error);
 	}
 }
 
@@ -41,20 +70,20 @@ async function saveConfig() {
 
 	// validate form
 	if (newBufferSize < 1 || newBufferSize > 50) {
-		alert('Buffer size must be between 1 and 50');
+		alert("Buffer size must be between 1 and 50");
 		return;
 	}
 
 	if (newTemperature < 0 || newTemperature > 2) {
-		alert('Temperature must be between 0 and 2');
+		alert("Temperature must be between 0 and 2");
 		return;
 	}
 
 	try {
 		// Save regular config
-		await fetch('/api/config', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
+		await fetch("/api/config", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
 				systemPrompt: newSystemPrompt,
 				bufferSize: newBufferSize,
@@ -62,9 +91,12 @@ async function saveConfig() {
 			})
 		});
 
-		alert('Configuration saved! Start a new chat for system prompt changes to take effect.');
+		// Save RAG config
+		await saveRagConfig();
+
+		alert("Configuration saved! Start a new chat for system prompt changes to take effect.");
 	} catch (error) {
-		alert(`Failed to save configuration: ${error.message}`);
+		alert("Failed to save configuration: ${error.message}");
 	}
 }
 
@@ -80,28 +112,29 @@ async function sendMessage() {
 	userMessageIndex = userMessages.length;
 
 	// Add user message to UI
-	addMessageToUI('user', message);
-	messageInput.value = '';
-	messageInput.style.height = 'auto';
+	addMessageToUI("user", message);
+	messageInput.value = "";
+	messageInput.style.height = "auto";
 
 	// Show loading indicator
-	const loadingId = 'loading-' + Date.now();
+	const loadingId = "loading-" + Date.now();
 	addLoadingToUI(loadingId);
 
 	try {
-		const response = await fetch('/api/chat', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
+		const response = await fetch("/api/chat", {
+			method: "POST",
+			headers: {"Content-Type": "application/json"},
 			body: JSON.stringify({
 				message: message,
-				chatId: chatId
+				chatId: chatId,
+				useRag: ragEnabledCheckbox && ragEnabledCheckbox.checked
 			})
 		});
 
 		const data = await response.json();
 
 		if (!response.ok) {
-			throw new Error(data.error || 'Failed to get response');
+			throw new Error(data.error || "Failed to get response")
 		}
 
 		// Remove loading indicator
@@ -111,29 +144,37 @@ async function sendMessage() {
 		}
 
 		// Add assistant response to UI
-		addMessageToUI('assistant', data.response);
+		addMessageToUI("assistant", data.response);
 
 		// Update token count
 		tokenCount = data.tokenCount;
 		updateTokenDisplay(tokenCount);
+
+		// Show sources if available
+		if (data.sources && data.sources.length > 0) {
+			const sourcesDiv = document.createElement("div");
+			sourcesDiv.innerHTML = "<strong>Sources:</strong> " + data.sources.map((s, i) => `${i + 1}. ${s.metadata.source}`).join(", ");
+			chatMessages.appendChild(sourcesDiv);
+			scrollToBottom();
+		}
 
 	} catch (error) {
 		const loadingElement = document.getElementById(loadingId);
 		if (loadingElement) {
 			loadingElement.remove();
 		}
-		addMessageToUI('system', `Error: ${error.message}`);
+		addMessageToUI("system", "Error: ${error.message}");
 	}
 }
 
 // Add message to UI
 function addMessageToUI(role, content) {
-	const messageDiv = document.createElement('div');
+	const messageDiv = document.createElement("div");
 	messageDiv.className = `message ${role}`;
 	messageDiv.id = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-	const contentDiv = document.createElement('div');
-	contentDiv.className = 'message-content';
+	const contentDiv = document.createElement("div");
+	contentDiv.className = "message-content";
 
 	// parse response from llm
 	console.log(content)
@@ -147,13 +188,13 @@ function addMessageToUI(role, content) {
 
 // Add loading indicator to UI
 function addLoadingToUI(id) {
-	const messageDiv = document.createElement('div');
-	messageDiv.className = 'message assistant';
+	const messageDiv = document.createElement("div");
+	messageDiv.className = "message assistant";
 	messageDiv.id = id;
 
-	const contentDiv = document.createElement('div');
-	contentDiv.className = 'message-content';
-	contentDiv.innerHTML = '<span class="loading"></span>';
+	const contentDiv = document.createElement("div");
+	contentDiv.className = "message-content";
+	contentDiv.innerHTML = "<span class=\"loading\"></span>";
 
 	messageDiv.appendChild(contentDiv);
 	chatMessages.appendChild(messageDiv);
@@ -176,35 +217,65 @@ function updateTokenDisplay(count) {
 // Start new chat
 async function startNewChat() {
 	try {
-		const response = await fetch('/api/new-chat', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
+		const response = await fetch("/api/new-chat", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ chatId: chatId })
 		});
 
 		const data = await response.json();
 
 		if (response.ok) {
-			chatMessages.innerHTML = '';
-			addMessageToUI('system', 'Started new chat session.');
+			chatMessages.innerHTML = "";
+			addMessageToUI("system", "Started new chat session.");
 			chatId = data.chatId;
 			tokenCount = data.tokenCount;
 			updateTokenDisplay(tokenCount);
 		}
 	} catch (error) {
-		addMessageToUI('system', `Error starting new chat: ${error.message}`);
+		addMessageToUI("system", "Error starting new chat: ${error.message}");
 	}
 }
 
-// Event Listeners
-sendBtn.addEventListener('click', sendMessage);
+// start a chat with the system
+async function systemSession(question) {
+	// ask question and remove normal send
+	addMessageToUI("assistant", question)
+	messageInput.removeEventListener("keydown", send);
 
-messageInput.addEventListener('keydown', (e) => {
-	if (e.key === 'Enter' && !e.shiftKey) {
+	return new Promise((resolve) => {
+		function answer(e) {
+			if (e.key === "Enter" && !e.shiftKey) {
+				// get answer
+				e.preventDefault();
+				let answer = messageInput.value.trim();
+
+				messageInput.value = '';
+				addMessageToUI("user", answer)
+				// update event listeners
+				messageInput.removeEventListener("keydown", sessionSend);
+				messageInput.addEventListener("keydown", send);
+
+				// exit
+				resolve(answer);
+			}
+		}
+
+		// setup new send
+		const sessionSend = event => answer(event);
+		messageInput.addEventListener("keydown", sessionSend)
+	});
+}
+
+// named send function
+function checkSend(e) {
+	// if user clicks enter, then send message
+	if (e.key === "Enter" && !e.shiftKey) {
 		e.preventDefault();
 		sendMessage();
 	}
-	else if (e.key === 'ArrowUp' && !e.shiftKey) {
+	// scroll through past prompts
+	else if (e.key === "ArrowUp" && !e.shiftKey) {
 		e.preventDefault();
         if (userMessageIndex-1 >= 0) {
 			messageInput.value = userMessages[--userMessageIndex]
@@ -214,7 +285,8 @@ messageInput.addEventListener('keydown', (e) => {
 			userMessageIndex = -1
 		}
 	}
-	else if (e.key === 'ArrowDown' && !e.shiftKey) {
+	// scroll through past prompts
+	else if (e.key === "ArrowDown" && !e.shiftKey) {
 		e.preventDefault();
 		if (userMessages[userMessageIndex+1] !== undefined) {
 			messageInput.value = userMessages[++userMessageIndex];
@@ -224,15 +296,230 @@ messageInput.addEventListener('keydown', (e) => {
 			userMessageIndex = userMessages.length
 		}
 	}
+}
+
+//=== RAG Functions ===\\
+// update status bar
+function updateRagUI() {
+	ragStatusBadge.textContent = ragConfig.status;
+	if (ragConfig.status === "Ready") {
+		ragStatusBadge.className = "status-ready";
+	}
+	else {
+		ragStatusBadge.className = "status-not-ready";
+	}
+}
+
+// loads config from server
+async function loadRagConfig() {
+	try {
+		const response = await fetch("/api/rag/config");
+		const data = await response.json();
+		// save config
+		ragConfig.enabled = data.enabled;
+		ragConfig.collectionName = data.collectionName;
+		ragConfig.topK = data.topK;
+		ragConfig.similarityThreshold = data.similarityThreshold;
+		ragConfig.chromaPath = data.chromaPath;
+		ragConfig.chunkSize = data.chunkSize;
+		ragConfig.chunkOverlap = data.chunkOverlap;
+		if (data.ready) {
+			ragConfig.status = "Ready";
+		}
+
+		// update settings
+		ragEnabledCheckbox.checked = ragConfig.enabled;
+		ragTopK.value = ragConfig.topK;
+		ragSimilarityThreshold.value = ragConfig.similarityThreshold;
+		ragChunkSize.value = ragConfig.chunkSize;
+		ragChunkOverlap.value = ragConfig.chunkOverlap;
+
+		// update ui status
+		updateRagUI();
+		await refreshRagDocuments();
+	} catch (error) {
+		addMessageToUI("system", "Failed to load RAG config:" + error);
+	}
+}
+
+// save current rag configuration
+async function saveRagConfig() {
+	try {
+		ragConfig.enabled = ragEnabledCheckbox.checked;
+		ragConfig.topK = ragTopK.value;
+		ragConfig.similarityThreshold = ragSimilarityThreshold.value;
+
+		await fetch("/api/rag/config", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				enabled: ragEnabledCheckbox.checked,
+				collectionName: ragConfig.collectionName,
+				topK: ragTopK.value,
+				similarityThreshold: ragSimilarityThreshold.value,
+				chromaPath: ragConfig.chromaPath
+			})
+		});
+
+		await saveDocConfig()
+	}
+	catch (error) {
+		addMessageToUI("system", "Failed to save RAG configuration:" + error.message);
+	}
+}
+
+// save the current Chunk config
+async function saveDocConfig() {
+	try {
+		ragConfig.chunkSize = ragChunkSize.value;
+		ragConfig.chunkOverlap = ragChunkOverlap.value;
+
+		await fetch("/api/rag/config", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				chunkSize: ragConfig.chunkSize,
+				chunkOverlap: ragConfig.chunkOverlap
+			})
+		});
+	}
+	catch (error) {
+		addMessageToUI("system", "Failed to save RAG configuration:" + error.message);
+	}
+}
+
+// request documents from server
+async function refreshRagDocuments() {
+	try {
+		const response = await fetch("/api/rag/documents");
+		const data = await response.json();
+
+		ragDocsList.innerHTML = "";
+
+		if (data.documents && data.documents.length > 0) {
+			data.documents.forEach(doc => {
+				const docDiv = document.createElement("div");
+				docDiv.className = "document-item";
+				docDiv.innerHTML = `
+					<div class="doc-name">${doc.name}</div>
+					<div class="doc-info">Chunks: ${doc.chunkCount} | Uploaded: ${new Date(doc.uploadDate).toLocaleDateString()}</div>
+				`;
+				ragDocsList.appendChild(docDiv);
+			});
+			addMessageToUI("system", "Loaded " + data.documents.length + " documents.")
+		} else {
+			ragDocsList.innerHTML = "<p class=\"no-documents\">No documents uploaded yet.</p>";
+			addMessageToUI("system", "No documents loaded.")
+		}
+	} catch (error) {
+		addMessageToUI("system", "Failed to refresh documents:" + error);
+	}
+}
+
+// upload a document
+async function uploadDocument() {
+	const fileInput = ragUploadInput;
+	const file = fileInput.files[0];
+
+	if (!file) {
+		ragConfig.status = "Error"
+		updateRagUI()
+		addMessageToUI("system", "Select document to upload.")
+		return;
+	}
+
+	const formData = new FormData();
+	formData.append("file", file);
+
+	const loadingId = "loading-" + Date.now();
+	addLoadingToUI(loadingId);
+
+	await saveRagConfig();
+
+	try {
+		const response = await fetch("/api/rag/upload", {
+			method: "POST",
+			body: formData
+		});
+
+		const data = await response.json();
+
+		if (data.success) {
+			const loadingElement = document.getElementById(loadingId);
+			if (loadingElement) {
+				loadingElement.remove();
+			}
+			addMessageToUI("system", "Document uploaded successfully.")
+			fileInput.value = ""; // Clear file input
+			await refreshRagDocuments();
+			ragConfig.status = "Ready"
+			updateRagUI()
+		} else {
+			const loadingElement = document.getElementById(loadingId);
+			if (loadingElement) {
+				loadingElement.remove();
+			}
+			addMessageToUI("system", "Failed to upload document: " + (data.error || "Unknown error"))
+			ragStatusBadge.textContent = "Error";
+			updateRagUI()
+		}
+	} catch (error) {
+		ragStatusBadge.textContent = "Error";
+		updateRagUI()
+		addMessageToUI("system", "Error uploading document: " + error.message)
+	}
+}
+
+// clear all current documents
+async function clearAllDocuments() {
+	setTimeout(() => {
+		messageInput.focus();
+	}, 10);
+	const answer = await systemSession("Are you sure you want to clear all documents? This cannot be undone. (y/n)");
+
+	if (answer.includes("y")) {
+		try {
+			const response = await fetch("/api/rag/clear", {
+				method: "POST"
+			});
+
+			const data = await response.json();
+
+			if (data.success) {
+				addMessageToUI("system", "All documents cleared successfully.")
+				await refreshRagDocuments();
+			} else {
+				addMessageToUI("system", "Failed to clear documents: " + data.error);
+			}
+		} catch (error) {
+			addMessageToUI("system", "Error clearing documents: " + error.message);
+		}
+	}
+	else {
+		addMessageToUI("system", "Operation canceled.")
+	}
+}
+
+//=== Event Listeners ===\\
+sendBtn.addEventListener("click", sendMessage);
+
+const send = event => checkSend(event);
+messageInput.addEventListener("keydown", send);
+
+messageInput.addEventListener("input", function() {
+	this.style.height = "auto";
+	this.style.height = Math.min(this.scrollHeight, 150) + "px";
 });
 
-messageInput.addEventListener('input', function() {
-	this.style.height = 'auto';
-	this.style.height = Math.min(this.scrollHeight, 150) + 'px';
+newChatBtn.addEventListener("click", startNewChat);
+saveConfigBtn.addEventListener("click", saveConfig);
+
+// RAG Event Listeners
+ragUploadBtn.addEventListener("click", uploadDocument);
+ragRefreshBtn.addEventListener("click", () => {
+	refreshRagDocuments();
 });
+ragClearBtn.addEventListener("click", clearAllDocuments);
 
-newChatBtn.addEventListener('click', startNewChat);
-saveConfigBtn.addEventListener('click', saveConfig);
-
-// Initialize on load
+//=== Initialize on load ===\\
 init();
