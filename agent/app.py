@@ -25,10 +25,10 @@ LLM_MODEL = os.getenv('LLM_MODEL', 'gpt-3.5-turbo')
 
 # User-editable config defaults
 USER_CONFIG_DEFAULTS = {
-	'systemPrompt': os.getenv('SYSTEM_PROMPT', 'You are a helpful AI assistant.'),
-	'bufferSize': int(os.getenv('BUFFER_SIZE', '10')),
-	'temperature': float(os.getenv('TEMPERATURE', '0.7')),
-	'port': int(os.getenv('PORT', '8080'))
+	'systemPrompt': "",
+	'bufferSize': 1,
+	'temperature': 0,
+	'port': ""
 }
 
 # Global config dictionaries
@@ -163,6 +163,7 @@ def config_endpoint():
 		response = {'success': True}
 		log_actions("/api/config", data, str(response), request_method=request.method)
 		return jsonify(response)
+
 
 @app.route('/api/chat', methods=['POST'])
 def chat():

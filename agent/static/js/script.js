@@ -1,10 +1,4 @@
 // Chat configuration
-let config = {
-	systemPrompt: '',
-	bufferSize: 10,
-	temperature: 0.7
-};
-
 let chatId = 'default';
 let tokenCount = 0;
 let userMessages = []
@@ -28,12 +22,9 @@ async function init() {
 		// Load regular config
 		const configResponse = await fetch('/api/config');
 		const configData = await configResponse.json();
-		config.systemPrompt = configData.systemPrompt;
-		config.bufferSize = configData.bufferSize;
-		config.temperature = configData.temperature || 0.7;
-		systemPromptInput.value = config.systemPrompt;
-		bufferSizeInput.value = config.bufferSize;
-		temperatureInput.value = config.temperature;
+		systemPromptInput.value = configData.systemPrompt;
+		bufferSizeInput.value = configData.bufferSize;
+		temperatureInput.value = configData.temperature;
 
         await startNewChat()
         addMessageToUI('system', 'System initialized with configured system prompt.');
@@ -48,6 +39,7 @@ async function saveConfig() {
 	const newBufferSize = parseInt(bufferSizeInput.value);
 	const newTemperature = parseFloat(temperatureInput.value);
 
+	// validate form
 	if (newBufferSize < 1 || newBufferSize > 50) {
 		alert('Buffer size must be between 1 and 50');
 		return;
@@ -69,10 +61,6 @@ async function saveConfig() {
 				temperature: newTemperature
 			})
 		});
-
-		config.systemPrompt = newSystemPrompt;
-		config.bufferSize = newBufferSize;
-		config.temperature = newTemperature;
 
 		alert('Configuration saved! Start a new chat for system prompt changes to take effect.');
 	} catch (error) {
