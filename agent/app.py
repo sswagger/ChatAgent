@@ -174,11 +174,6 @@ def save_user_config():
 # =============================================================================
 # FLASK API ENDPOINTS
 # =============================================================================
-
-# Load configs on startup - load mcp_config first for add_mcp_capabilities_instruction
-load_config()
-
-
 @app.route('/')
 def index():
 	"""Serve the main chat interface."""
