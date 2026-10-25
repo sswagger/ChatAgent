@@ -52,7 +52,44 @@ class RAGService:
 		self.vector_store = None
 		self.embeddings = None
 		self.text_splitter = None
-		self._initialize()
+
+		try:
+			# Determine embedding model type
+			embedding_model = self.config.get("embeddingModel", "text-embedding-3-small")
+
+			# Use HuggingFace for sentence-transformers models
+			if "sentence-transformers" in embedding_model:
+				self.embeddings = HuggingFaceEmbeddings(model_name=embedding_model)
+			else:
+				# Use OpenAI for other embedding models
+				api_key = os.getenv("LLM_API_KEY", "")
+				self.embeddings = OpenAIEmbeddings(
+					model=embedding_model,
+					api_key=api_key
+				)
+
+			# Initialize ChromaDB client
+			chroma_path = self.config.get("chromaPath", "./chroma_data")
+
+			# Create persistent client
+			self.client = chromadb.PersistentClient(path=chroma_path)
+
+			# Get or create collection
+			collection_name = self.config.get("collectionName", "documents")
+			self.collection = self.client.get_or_create_collection(name=collection_name)
+
+			# Initialize LangChain Chroma wrapper
+			self.vector_store = Chroma(
+				client=self.client,
+				collection_name=collection_name,
+				embedding_function=self.embeddings
+			)
+
+			self.config["ready"] = True
+
+		except Exception as e:
+			self.config["ready"] = False
+			self.config["error"] = str(e)
 
 	def _load_config(self) -> dict:
 		"""
@@ -78,56 +115,6 @@ class RAGService:
 		"""
 		return RAG_DEFAULTS.copy()
 
-	def _initialize(self):
-		"""
-		Initialize RAG components including embeddings, text splitter,
-		and ChromaDB vector store.
-		"""
-		try:
-			# Determine embedding model type
-			embedding_model = self.config.get("embeddingModel", "text-embedding-3-small")
-
-			# Use HuggingFace for sentence-transformers models
-			if "sentence-transformers" in embedding_model:
-				self.embeddings = HuggingFaceEmbeddings(model_name=embedding_model)
-			else:
-				# Use OpenAI for other embedding models
-				api_key = os.getenv("LLM_API_KEY", "")
-				self.embeddings = OpenAIEmbeddings(
-					model=embedding_model,
-					api_key=api_key
-				)
-
-			# Initialize text splitter for chunking documents
-			self.text_splitter = RecursiveCharacterTextSplitter(
-				chunk_size=self.config.get("chunkSize", 500),
-				chunk_overlap=self.config.get("chunkOverlap", 50)
-			)
-
-			# Initialize ChromaDB client
-			chroma_path = self.config.get("chromaPath", "./chroma_data")
-
-			# Create persistent client
-			self.client = chromadb.PersistentClient(path=chroma_path)
-
-			# Get or create collection
-			collection_name = self.config.get("collectionName", "documents")
-			self.collection = self.client.get_or_create_collection(name=collection_name)
-
-			# Initialize LangChain Chroma wrapper
-			self.vector_store = Chroma(
-				client=self.client,
-				collection_name=collection_name,
-				embedding_function=self.embeddings
-			)
-
-			self.config["ready"] = True
-
-		except Exception as e:
-			self.config["ready"] = False
-			self.config["error"] = str(e)
-			return {"success": False, "error": f"Error initializing RAG: {e}"}
-
 	def upload_document(self, file_path: str, file_content: str = None, file_name: str = None) -> dict:
 		"""
 		Upload and process a document for RAG retrieval.
@@ -152,6 +139,12 @@ class RAGService:
 
 			if not documents:
 				return {"success": False, "error": "No content could be extracted from document"}
+
+			# Initialize text splitter for chunking documents
+			self.text_splitter = RecursiveCharacterTextSplitter(
+				chunk_size=self.config.get("chunkSize", 500),
+				chunk_overlap=self.config.get("chunkOverlap", 50)
+			)
 
 			chunks = self.text_splitter.split_documents(documents)
 

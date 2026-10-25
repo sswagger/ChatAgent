@@ -1,16 +1,4 @@
 //=== Configs ===\\
-// RAG configuration
-let ragConfig = {
-	enabled: true,
-	collectionName: "documents",
-	topK: 4,
-	similarityThreshold: 0.25,
-	chromaPath: "./chroma_data",
-	status: false,
-	chunkSize: 500,
-	chunkOverlap: 50
-};
-
 // Chat configuration
 let chatId = "default";
 let tokenCount = 0;
@@ -300,9 +288,9 @@ function checkSend(e) {
 
 //=== RAG Functions ===\\
 // update status bar
-function updateRagUI() {
-	ragStatusBadge.textContent = ragConfig.status;
-	if (ragConfig.status === "Ready") {
+function updateRagUI(message) {
+	ragStatusBadge.textContent = message;
+	if (message === "Ready") {
 		ragStatusBadge.className = "status-ready";
 	}
 	else {
@@ -315,27 +303,18 @@ async function loadRagConfig() {
 	try {
 		const response = await fetch("/api/rag/config");
 		const data = await response.json();
-		// save config
-		ragConfig.enabled = data.enabled;
-		ragConfig.collectionName = data.collectionName;
-		ragConfig.topK = data.topK;
-		ragConfig.similarityThreshold = data.similarityThreshold;
-		ragConfig.chromaPath = data.chromaPath;
-		ragConfig.chunkSize = data.chunkSize;
-		ragConfig.chunkOverlap = data.chunkOverlap;
-		if (data.ready) {
-			ragConfig.status = "Ready";
-		}
 
 		// update settings
-		ragEnabledCheckbox.checked = ragConfig.enabled;
-		ragTopK.value = ragConfig.topK;
-		ragSimilarityThreshold.value = ragConfig.similarityThreshold;
-		ragChunkSize.value = ragConfig.chunkSize;
-		ragChunkOverlap.value = ragConfig.chunkOverlap;
+		ragEnabledCheckbox.checked = data.enabled;
+		ragTopK.value = data.topK;
+		ragSimilarityThreshold.value = data.similarityThreshold;
+		ragChunkSize.value = data.chunkSize;
+		ragChunkOverlap.value = data.chunkOverlap;
 
 		// update ui status
-		updateRagUI();
+		if (data.ready) {
+			updateRagUI("Ready");
+		}
 		await refreshRagDocuments();
 	} catch (error) {
 		addMessageToUI("system", "Failed to load RAG config:" + error);
@@ -344,24 +323,17 @@ async function loadRagConfig() {
 
 // save current rag configuration
 async function saveRagConfig() {
+	// todo: add validation
 	try {
-		ragConfig.enabled = ragEnabledCheckbox.checked;
-		ragConfig.topK = ragTopK.value;
-		ragConfig.similarityThreshold = ragSimilarityThreshold.value;
-
 		await fetch("/api/rag/config", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
 				enabled: ragEnabledCheckbox.checked,
-				collectionName: ragConfig.collectionName,
 				topK: ragTopK.value,
-				similarityThreshold: ragSimilarityThreshold.value,
-				chromaPath: ragConfig.chromaPath
+				similarityThreshold: ragSimilarityThreshold.value
 			})
 		});
-
-		await saveDocConfig()
 	}
 	catch (error) {
 		addMessageToUI("system", "Failed to save RAG configuration:" + error.message);
@@ -370,16 +342,14 @@ async function saveRagConfig() {
 
 // save the current Chunk config
 async function saveDocConfig() {
+	// todo: add validation
 	try {
-		ragConfig.chunkSize = ragChunkSize.value;
-		ragConfig.chunkOverlap = ragChunkOverlap.value;
-
 		await fetch("/api/rag/config", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
-				chunkSize: ragConfig.chunkSize,
-				chunkOverlap: ragConfig.chunkOverlap
+				chunkSize: ragChunkSize.value,
+				chunkOverlap: ragChunkOverlap.value
 			})
 		});
 	}
@@ -422,8 +392,7 @@ async function uploadDocument() {
 	const file = fileInput.files[0];
 
 	if (!file) {
-		ragConfig.status = "Error"
-		updateRagUI()
+		updateRagUI("Error")
 		addMessageToUI("system", "Select document to upload.")
 		return;
 	}
@@ -434,7 +403,7 @@ async function uploadDocument() {
 	const loadingId = "loading-" + Date.now();
 	addLoadingToUI(loadingId);
 
-	await saveRagConfig();
+	await saveDocConfig();
 
 	try {
 		const response = await fetch("/api/rag/upload", {
@@ -452,8 +421,7 @@ async function uploadDocument() {
 			addMessageToUI("system", "Document uploaded successfully.")
 			fileInput.value = ""; // Clear file input
 			await refreshRagDocuments();
-			ragConfig.status = "Ready"
-			updateRagUI()
+			updateRagUI("Ready")
 		} else {
 			const loadingElement = document.getElementById(loadingId);
 			if (loadingElement) {
