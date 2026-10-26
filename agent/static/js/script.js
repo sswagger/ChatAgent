@@ -4,6 +4,7 @@ let chatId = "default";
 let tokenCount = 0;
 let userMessages = []
 let userMessageIndex = 0;
+let ragDocuments = {}
 
 //=== DOM Elements ===\\
 const messageInput = document.getElementById("message-input");
@@ -25,10 +26,11 @@ const ragChunkSize = document.getElementById("chunk-size");
 const ragChunkOverlap = document.getElementById("chunk-overlap");
 const ragUploadInput = document.getElementById("rag-upload");
 const ragUploadBtn = document.getElementById("rag-upload-btn");
-const ragRefreshBtn = document.getElementById("rag-refresh-btn");
 const ragClearBtn = document.getElementById("rag-clear-btn");
 const ragDocsList = document.getElementById("rag-documents-list");
 const ragStatusBadge = document.getElementById("status-badge");
+const ragDocBadge = document.getElementById("doc-badge");
+const ragDocId = document.getElementById("doc-id")
 
 // Initialize
 async function init() {
@@ -291,10 +293,10 @@ function checkSend(e) {
 function updateRagUI(message) {
 	ragStatusBadge.textContent = message;
 	if (message === "Ready") {
-		ragStatusBadge.className = "status-ready";
+		ragStatusBadge.className = "status-ready badge";
 	}
 	else {
-		ragStatusBadge.className = "status-not-ready";
+		ragStatusBadge.className = "status-not-ready badge";
 	}
 }
 
@@ -317,6 +319,7 @@ async function loadRagConfig() {
 		}
 		await refreshRagDocuments();
 	} catch (error) {
+		updateRagUI("Error")
 		addMessageToUI("system", "Failed to load RAG config:" + error);
 	}
 }
@@ -336,6 +339,7 @@ async function saveRagConfig() {
 		});
 	}
 	catch (error) {
+		updateRagUI("Error")
 		addMessageToUI("system", "Failed to save RAG configuration:" + error.message);
 	}
 }
@@ -375,12 +379,69 @@ async function refreshRagDocuments() {
 					<div class="doc-info">Chunks: ${doc.chunkCount} | Uploaded: ${new Date(doc.uploadDate).toLocaleDateString()}</div>
 				`;
 				ragDocsList.appendChild(docDiv);
+
+				ragDocuments[doc.name] = {"name": doc.name.replace(/\..+/g, ""), "id": doc.id, "chunkSize": doc.chunkSize, "chunkOverlap": doc.chunkOverlap, "isSelected": false};
+			});
+
+			// add click event to documents
+			document.querySelectorAll(".document-item").forEach(doc => {
+				doc.addEventListener('click', function() {
+					selectedDoc = ragDocuments[doc.firstElementChild.innerText];
+					// remove border color to all documents
+					ragDocsList.childNodes.forEach(e => {
+						e.style.borderColor = "#333";
+					});
+
+					if (!selectedDoc["isSelected"]) {
+						Object.values(ragDocuments).forEach(value => {
+							value["isSelected"] = false;
+						});
+
+						// update docBadge and add border color
+						ragDocBadge.innerText = selectedDoc["name"];
+						ragDocBadge.className = "status-ready badge"
+						doc.style.borderColor = "#82f43a";
+
+						selectedDoc["isSelected"] = true
+						ragDocId.value = selectedDoc["id"]
+						ragChunkSize.value = selectedDoc["chunkSize"];
+						ragChunkOverlap.value = selectedDoc["chunkOverlap"];
+						ragUploadInput.disabled = true;
+						ragChunkSize.disabled = true;
+						ragChunkOverlap.disabled = true;
+						ragUploadBtn.disabled = true;
+						ragUploadBtn.style.backgroundColor = "#2a2a2a";
+						ragUploadBtn.style.border = "1px solid #444";
+					}
+					else {
+						ragDocBadge.className = "status-not-ready badge"
+						selectedDoc["isSelected"] = false
+						ragDocBadge.innerText = "None";
+						ragDocId.value = ""
+						ragUploadInput.disabled = false;
+						ragChunkSize.disabled = false;
+						ragChunkOverlap.disabled = false;
+						ragUploadBtn.disabled = false;
+						ragUploadBtn.style.backgroundColor = "#82f43a";
+						ragUploadBtn.style.border = "";
+					}
+				});
 			});
 			addMessageToUI("system", "Loaded " + data.documents.length + " documents.")
 		} else {
 			ragDocsList.innerHTML = "<p class=\"no-documents\">No documents uploaded yet.</p>";
 			addMessageToUI("system", "No documents loaded.")
 		}
+
+		ragDocBadge.className = "status-not-ready badge"
+		ragDocBadge.innerText = "None";
+		ragDocId.value = ""
+		ragUploadInput.disabled = false;
+		ragChunkSize.disabled = false;
+		ragChunkOverlap.disabled = false;
+		ragUploadBtn.disabled = false;
+		ragUploadBtn.style.backgroundColor = "#82f43a";
+		ragUploadBtn.style.border = "";
 	} catch (error) {
 		addMessageToUI("system", "Failed to refresh documents:" + error);
 	}
@@ -428,12 +489,10 @@ async function uploadDocument() {
 				loadingElement.remove();
 			}
 			addMessageToUI("system", "Failed to upload document: " + (data.error || "Unknown error"))
-			ragStatusBadge.textContent = "Error";
-			updateRagUI()
+			updateRagUI("Error")
 		}
 	} catch (error) {
-		ragStatusBadge.textContent = "Error";
-		updateRagUI()
+		updateRagUI("Error")
 		addMessageToUI("system", "Error uploading document: " + error.message)
 	}
 }
@@ -484,9 +543,6 @@ saveConfigBtn.addEventListener("click", saveConfig);
 
 // RAG Event Listeners
 ragUploadBtn.addEventListener("click", uploadDocument);
-ragRefreshBtn.addEventListener("click", () => {
-	refreshRagDocuments();
-});
 ragClearBtn.addEventListener("click", clearAllDocuments);
 
 //=== Initialize on load ===\\

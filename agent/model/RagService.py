@@ -165,7 +165,9 @@ class RAGService:
 				"path": file_path,
 				"chunkCount": len(chunks),
 				"uploadDate": datetime.now().isoformat(),
-				"size": len(file_content) if isinstance(file_content, str) else len(str(file_content))
+				"size": len(file_content) if isinstance(file_content, str) else len(str(file_content)),
+				"chunkSize": self.config.get("chunkSize", 500),
+				"chunkOverlap": self.config.get("chunkOverlap", 50)
 			}
 
 			with rag_lock:

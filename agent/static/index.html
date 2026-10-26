@@ -22,9 +22,9 @@
 					<!-- RAG Settings Section -->
 					<div class="config-section rag-section">
 						<!-- Heading -->
-						<div id="rag-header">
+						<div class="rag-header">
 							<h3>RAG Settings</h3>
-							<div id="status-badge" class="status-not-ready">Initializing</div>
+							<div id="status-badge" class="status-not-ready badge">Initializing</div>
 						</div>
 
 						<!-- Top K -->
@@ -45,13 +45,20 @@
 					<!-- RAG Settings Section -->
 					<div class="config-section rag-section">
 						<!-- Heading -->
-						<div>
-							<h3>Document Settings</h3>
+						<div class="rag-header">
+							<h3>Document</h3>
+							<div id="doc-badge" class="status-not-ready badge">None</div>
 						</div>
 
 						<!-- Upload Button -->
 						<div class="config-section">
 							<button id="rag-upload-btn" class="btn-secondary">Upload Document</button>
+						</div>
+
+						<!-- Document Id -->
+						<div class="config-section">
+							<label for="doc-id">Document Id</label>
+							<input type="text" id="doc-id" class="config-input" placeholder="Select Doc for Id" disabled>
 						</div>
 
 						<!-- File Upload -->
@@ -81,7 +88,6 @@
 							<div id="rag-documents-list" class="documents-list">
 								<p class="no-documents">No documents uploaded yet.</p>
 							</div>
-							<button id="rag-refresh-btn" class="btn-tertiary">Refresh</button>
 							<button id="rag-clear-btn" class="btn-tertiary">Clear All Documents</button>
 						</div>
 					</div>
@@ -139,7 +145,7 @@
 			<div id="chat-area">
 				<!-- Header -->
 				<div id="chat-header">
-					<h1 class="header" id="chat-title">AI Chat Assistant</h1>
+					<h1 class="header" id="chat-title">AI Chat Assistant (RAG)</h1>
 					<button id="new-chat-btn">New Chat</button>
 				</div>
 

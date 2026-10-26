@@ -3,6 +3,11 @@ AI Chat Agent - Single File Implementation
 Combines Flask API, Configuration Loader, and RAG Service
 """
 
+# The rag-service doesn't always return a chunk (as expected). However, when it does, it does not look at previous chats
+# Must add the following:
+# todo: 1. pass in previous chats to the search query for rag
+# todo: 2. let the llm review document titles and "demand" a chunk from the rag server even if it is outside of the similarity threshold.
+
 import os
 import json
 import threading
@@ -463,6 +468,7 @@ def rag_stats():
 
 	log_actions("/api/rag/clear", "", str(stats), request_method="GET")
 	return jsonify(stats)
+
 
 if __name__ == '__main__':
 	# Load user config on startup

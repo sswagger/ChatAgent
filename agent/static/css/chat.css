@@ -398,39 +398,42 @@ hr {
     background: #151515;
 }
 
-#rag-header {
+.rag-header {
 	margin-bottom: 12px;
 	display: table;
 	background: #151515;
 }
 
-#rag-header::after {
+.rag-header::after {
 	content: "";
 }
 
-#rag-header h3 {
+.rag-header h3 {
 	width: 50%;
 	float: left;
 }
 
-#status-badge {
+.badge {
     padding: 4px 8px;
     border-radius: 12px;
     font-size: 12px;
     font-weight: 600;
 	text-transform: uppercase;
-    background: #444;
-    color: white;
+	background: #ba8110;
+	color: white;
 	width: fit-content;
+	max-width: 50%;
 	float: right;
+	overflow: hidden;
+	white-space: nowrap;
 }
 
-#status-badge.status-ready {
+.badge.status-ready {
 	background: #82f43a;
 	color: white;
 }
 
-#status-badge.status-not-ready {
+.badge.status-not-ready {
 	background: #ba8110;
 	color: white;
 }
