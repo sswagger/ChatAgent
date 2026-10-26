@@ -6,7 +6,7 @@ Combines Flask API, Configuration Loader, and RAG Service
 # The rag-service doesn't always return a chunk (as expected). However, when it does, it does not look at previous chats
 # Must add the following:
 # todo: 1. pass in previous chats to the search query for rag
-# todo: 2. let the llm review document titles and "demand" a chunk from the rag server even if it is outside of the similarity threshold.
+# todo: 2. start a new "chat" in which the server asks the llm to summarize the user's messages so far. Then send that summary to rag
 
 import os
 import json

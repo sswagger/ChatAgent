@@ -82,9 +82,9 @@ async function saveConfig() {
 		});
 
 		// Save RAG config
-		await saveRagConfig();
-
-		alert("Configuration saved! Start a new chat for system prompt changes to take effect.");
+		if (await saveRagConfig()) {
+			alert("Configuration saved! Start a new chat for system prompt changes to take effect.");
+		}
 	} catch (error) {
 		alert("Failed to save configuration: ${error.message}");
 	}
@@ -326,7 +326,17 @@ async function loadRagConfig() {
 
 // save current rag configuration
 async function saveRagConfig() {
-	// todo: add validation
+	if (ragTopK.value > 20 || ragTopK.value < 1) {
+		updateRagUI("Error");
+		addMessageToUI("system", "Top K not valid");
+		return false;
+	}
+	if (ragSimilarityThreshold.value > 1 || ragSimilarityThreshold.value < 0) {
+		updateRagUI("Error");
+		addMessageToUI("system", "Similarity Threshold not valid");
+		return false;
+	}
+
 	try {
 		await fetch("/api/rag/config", {
 			method: "POST",
@@ -337,16 +347,30 @@ async function saveRagConfig() {
 				similarityThreshold: ragSimilarityThreshold.value
 			})
 		});
+		return true;
 	}
 	catch (error) {
-		updateRagUI("Error")
+		updateRagUI("Error");
 		addMessageToUI("system", "Failed to save RAG configuration:" + error.message);
+		return false;
 	}
 }
 
 // save the current Chunk config
 async function saveDocConfig() {
-	// todo: add validation
+	if (ragChunkSize.value > 1000 || ragChunkSize.value < 100) {
+		addMessageToUI("system", "Chunk Size not valid");
+		return false;
+	}
+	if (ragChunkOverlap.value > 100 || ragChunkOverlap.value < 0) {
+		addMessageToUI("system", "Chunk Overlap not valid");
+		return false;
+	}
+	if (ragChunkOverlap.value >= ragChunkSize.value) {
+		addMessageToUI("system", "Chunk Overlap must be smaller than Chunk Size");
+		return false;
+	}
+
 	try {
 		await fetch("/api/rag/config", {
 			method: "POST",
@@ -356,9 +380,11 @@ async function saveDocConfig() {
 				chunkOverlap: ragChunkOverlap.value
 			})
 		});
+		return true;
 	}
 	catch (error) {
 		addMessageToUI("system", "Failed to save RAG configuration:" + error.message);
+		return false;
 	}
 }
 
@@ -453,8 +479,12 @@ async function uploadDocument() {
 	const file = fileInput.files[0];
 
 	if (!file) {
-		updateRagUI("Error")
-		addMessageToUI("system", "Select document to upload.")
+		updateRagUI("Error");
+		addMessageToUI("system", "Select document to upload.");
+		return;
+	}
+
+	if (!await saveDocConfig()) {
 		return;
 	}
 
@@ -463,8 +493,6 @@ async function uploadDocument() {
 
 	const loadingId = "loading-" + Date.now();
 	addLoadingToUI(loadingId);
-
-	await saveDocConfig();
 
 	try {
 		const response = await fetch("/api/rag/upload", {
