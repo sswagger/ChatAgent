@@ -133,27 +133,25 @@ async function sendMessage() {
 			loadingElement.remove();
 		}
 
+		// Show sources if available
+		if (data.sources.length > 0) {
+			data.sources.forEach(dict => {
+				addMessageToUI("system", 'source: ' + dict.metadata.source + ' | similarity: ' + dict.score)
+			});
+		}
+
 		// Add assistant response to UI
 		addMessageToUI("assistant", data.response);
 
 		// Update token count
 		tokenCount = data.tokenCount;
 		updateTokenDisplay(tokenCount);
-
-		// Show sources if available
-		if (data.sources && data.sources.length > 0) {
-			const sourcesDiv = document.createElement("div");
-			sourcesDiv.innerHTML = "<strong>Sources:</strong> " + data.sources.map((s, i) => `${i + 1}. ${s.metadata.source}`).join(", ");
-			chatMessages.appendChild(sourcesDiv);
-			scrollToBottom();
-		}
-
 	} catch (error) {
 		const loadingElement = document.getElementById(loadingId);
 		if (loadingElement) {
 			loadingElement.remove();
 		}
-		addMessageToUI("system", "Error: ${error.message}");
+		addMessageToUI("system", `Error: ${error.message}`);
 	}
 }
 
@@ -223,7 +221,7 @@ async function startNewChat() {
 			updateTokenDisplay(tokenCount);
 		}
 	} catch (error) {
-		addMessageToUI("system", "Error starting new chat: ${error.message}");
+		addMessageToUI("system", `Error starting new chat: ${error.message}`);
 	}
 }
 

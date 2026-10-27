@@ -340,13 +340,11 @@ class RAGService:
 
 			relevant_docs = []
 			for doc, score in results:
-				similarity = 1 - score
-
-				if similarity >= sim_threshold:
+				if score <= sim_threshold:
 					relevant_docs.append({
 						"content": doc.page_content,
 						"metadata": doc.metadata,
-						"score": similarity,
+						"score": score,
 						"threshold": sim_threshold
 					})
 

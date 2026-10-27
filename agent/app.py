@@ -240,7 +240,7 @@ def chat():
 		chat_history[chat_id] = [chat_history[chat_id][0]] + chat_history[chat_id][-config.get('bufferSize', USER_CONFIG_DEFAULTS['bufferSize']):]
 
 	# If RAG is enabled, retrieve relevant documents and augment the prompt
-	json_response = {}
+	sources = []
 	if rag_service.config.get('enabled', False) and rag_service.config.get('ready', False):
 		try:
 			# parse users messages so far
@@ -265,10 +265,10 @@ def chat():
 					log_actions("call to RAG", rag_prompt.get('content'), augmented_prompt)
 				else:
 					chat_history[chat_id][-1]['content'] = augmented_prompt +  "\nUser Question: " + message
-					json_response['sources'] = docs
+					sources = docs
 					log_actions("call to RAG", rag_prompt.get('content'), augmented_prompt)
 		except Exception as e:
-			log_actions("/api/chat", data, str({'error': str(e)}), error="500")
+			log_actions("/api/chat", data, str({'error': str(e)}), request_method="POST", error="500")
 
 	# call the llm
 	full_response, error = call_llm(chat_history[chat_id])
@@ -287,7 +287,8 @@ def chat():
 	json_response = {
 		'response': full_response.get('content', ''),
 		'tokenCount': token_count,
-		'chatId': chat_id
+		'chatId': chat_id,
+		'sources': sources
 	}
 	log_actions("/api/chat", data, str(json_response), request_method="POST")
 	return jsonify(json_response)
