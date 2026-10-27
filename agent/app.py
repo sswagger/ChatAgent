@@ -3,9 +3,6 @@ AI Chat Agent - Single File Implementation
 Combines Flask API, Configuration Loader, and RAG Service
 """
 
-# fixme: The rag-service doesn't always return a chunk (as expected). However, when it does, it does not look at previous chats
-# todo: start a new "chat" in which the server asks the llm to summarize the user's messages so far. Then send that summary to rag
-
 import os
 import json
 import threading
