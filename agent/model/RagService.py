@@ -385,7 +385,6 @@ class RAGService:
 			Based on the following document context:
 			{context}
 
-			User Question: "{query}"
 			Please answer the question based on the provided document context. Cite specific sources when relevant.
 		"""
 

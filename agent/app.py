@@ -47,6 +47,8 @@ USER_CONFIG_DEFAULTS = {
 }
 
 # === Global State ===
+usr_msgs = ""
+msg_count = 0
 config = {}
 rag_service = RAGService()
 chat_history = {}
@@ -214,7 +216,7 @@ def config_endpoint():
 @app.route('/api/chat', methods=['POST'])
 def chat():
 	"""Handle chat messages with optional RAG integration."""
-	global rag_service
+	global rag_service, usr_msgs, msg_count
 
 	data = request.json
 	message = data.get('message', '')
@@ -242,14 +244,34 @@ def chat():
 
 	# If RAG is enabled, retrieve relevant documents and augment the prompt
 	json_response = {}
-	if rag_service.config.get('enabled', False):
-		if rag_service.config.get('enabled', False) and rag_service.config.get('ready', False):
-			try:
-				augmented_prompt, docs = rag_service.query_documents(message)
-				chat_history[chat_id][-1]['content'] = augmented_prompt
-				json_response['sources'] = docs
-			except Exception as e:
-				log_actions("/api/chat", data, str({'error': str(e)}), error="500")
+	if rag_service.config.get('enabled', False) and rag_service.config.get('ready', False):
+		try:
+			# parse users messages so far
+			msg_count += 1
+			usr_msgs += "msg" + str(msg_count) + ":  " + chat_history[chat_id][-1]['content'] + " | "
+			# call llm
+			rag_prompt, error = call_llm([
+				{'role': 'system', 'content': 'These are messages sent by the user; I need you to summarize them. Be sure to mention all topics and use lots of adjectives (eg: very tall green tree, big red hot air balloon, long exciting international trip). **HIGH IMPORTANCE:** Answer in only in as few as possible comma separated nouns (5 nouns max).'},
+				{'role': 'user', 'content': usr_msgs},
+			])
+			if error:
+				json_response = {'error': f'Failed to get response= {error}'}
+				log_actions("/api/chat", data, str(json_response), request_method="POST", error="500")
+				return jsonify(json_response), 500
+
+			# prompt rag
+			if rag_prompt is not None:
+				augmented_prompt, docs = rag_service.query_documents(str(rag_prompt.get('content')))
+
+				if len(docs) <= 0:
+					chat_history[chat_id][-1]['content'] = message
+					log_actions("call to RAG", rag_prompt.get('content'), augmented_prompt)
+				else:
+					chat_history[chat_id][-1]['content'] = augmented_prompt +  "\nUser Question: " + message
+					json_response['sources'] = docs
+					log_actions("call to RAG", rag_prompt.get('content'), augmented_prompt)
+		except Exception as e:
+			log_actions("/api/chat", data, str({'error': str(e)}), error="500")
 
 	# call the llm
 	full_response, error = call_llm(chat_history[chat_id])
@@ -277,6 +299,9 @@ def chat():
 @app.route('/api/new-chat', methods=['POST'])
 def new_chat():
 	"""Start a new chat session."""
+	global usr_msgs, msg_count
+	usr_msgs = ""
+	msg_count = 0
 	data = request.json or {}
 	chat_id = data.get('chatId', 'default')
 	chat_history[chat_id] = []
