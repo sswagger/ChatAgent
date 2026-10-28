@@ -13,6 +13,7 @@ This is an AI chat agent that is compatible with openAI models.
   * Web
 * Author
   * Sam Swagger
+  * Tim Swagger
   * Initial commits by Qwen Coder
 
 ## How to Run
@@ -32,6 +33,6 @@ docker compose -f ./docker-compose.yml up
 This will create a docker container at `localhost:8080` that you can open in any web browser.
 
 ## Notes
-The app will automatically create a `config.json` and a `log.txt`.
+The app will automatically create a `config.json` and various `log-[session-id].txt`.
 The `config.json` saves your chat settings across sessions.
-The `log.txt` logs all request/response payloads, and resets when a new chat session is created.
+The `log-[session-id].txt` logs all request/response payloads, and resets when a new chat session is created.
