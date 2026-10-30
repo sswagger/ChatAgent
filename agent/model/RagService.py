@@ -27,11 +27,11 @@ RAG_CONFIG_FILE = 'rag_config.json'
 RAG_DEFAULTS = {
 	'enabled': True,
 	'collectionName': 'documents',
-	'topK': 4,
-	'similarityThreshold': 0.25,
-	'embeddingModel': 'text-embedding-3-small',
+	'topK': 5,
+	'similarityThreshold': 0.9,
+	'embeddingModel': '',
 	'chunkSize': 500,
-	'chunkOverlap': 50,
+	'chunkOverlap': 30,
 	'chromaPath': './chroma_data',
 	'documents': []
 }
@@ -42,11 +42,12 @@ class RAGService:
 	Handles document upload, storage, and retrieval for Retrieval-Augmented Generation.
 	"""
 
-	def __init__(self):
+	def __init__(self, session: str):
 		"""
 		Initialize the RAG service by loading configuration and setting up
 		the vector database components.
 		"""
+		self.session = session
 		self.config = self._load_config()
 		self.client = None
 		self.vector_store = None
@@ -100,11 +101,16 @@ class RAGService:
 		"""
 		if os.path.exists(RAG_CONFIG_FILE):
 			try:
-				with open(RAG_CONFIG_FILE, "r") as f:
-					return json.load(f)
-			except (json.JSONDecodeError, IOError):
-				pass
-		return self._get_defaults()
+				with open(RAG_CONFIG_FILE, 'r') as f:
+					# load all json
+					configs = json.load(f)
+
+					return configs[self.session]
+			except (json.JSONDecodeError, IOError, KeyError) as e:
+				return self._get_defaults()
+		else:
+			return {"success": False, "error": f"Error loading config: config file not found"}
+
 
 	def _get_defaults(self) -> dict:
 		"""
@@ -113,7 +119,18 @@ class RAGService:
 		Returns:
 			Dictionary with default RAG configuration
 		"""
-		return RAG_DEFAULTS.copy()
+		if os.path.exists(RAG_CONFIG_FILE):
+			try:
+				with open(RAG_CONFIG_FILE, 'r') as f:
+					# load all json
+					configs = json.load(f)
+
+					return configs["default"]
+			except (json.JSONDecodeError, IOError, KeyError) as e:
+				return {"success": False, "error": f"Error loading config: no defaults set"}
+		else:
+			return {"success": False, "error": f"Error loading config: config file not found"}
+
 
 	def upload_document(self, file_path: str, file_content: str = None, file_name: str = None) -> dict:
 		"""
@@ -448,7 +465,7 @@ class RAGService:
 			with rag_lock:
 				# Get all document IDs from the collection
 				all_docs = self.collection.get()
-				if all_docs and 'ids' in all_docs:
+				if all_docs and 'ids' in all_docs and all_docs["ids"]:
 					self.collection.delete(ids=all_docs['ids'])
 				else:
 					# If no documents, just clear config
@@ -487,8 +504,17 @@ class RAGService:
 		"""
 		Save RAG configuration to rag_config.json file.
 		"""
-		try:
-			with open(RAG_CONFIG_FILE, "w") as f:
-				json.dump(self.config, f, indent=4)
-		except Exception as e:
-			return {"success": False, "error": f"Error saving config: {e}"}
+		if os.path.exists(RAG_CONFIG_FILE):
+			try:
+				with open(RAG_CONFIG_FILE, 'r') as f:
+					# load all json
+					configs = json.load(f)
+
+					configs[self.session] = self.config
+					with open(RAG_CONFIG_FILE, 'w') as file:
+						json.dump(configs, file, indent=4)
+
+			except (json.JSONDecodeError, IOError) as e:
+				return {"success": False, "error": f"Error saving config: {e}"}
+		else:
+			return {"success": False, "error": f"Error saving config: config file not found"}

@@ -1,22 +1,22 @@
 //=== Configs ===\\
 // Chat configuration
-let chatId = "default";
 let tokenCount = 0;
+let sessionId = "";
 let userMessages = []
 let userMessageIndex = 0;
 let ragDocuments = {}
 
-//=== DOM Elements ===\\
-const messageInput = document.getElementById("message-input");
-const sendBtn = document.getElementById("send-btn");
-const chatMessages = document.getElementById("chat-messages");
-const systemPromptInput = document.getElementById("system-prompt");
-const bufferSizeInput = document.getElementById("buffer-size");
-const temperatureInput = document.getElementById("temperature");
-const saveConfigBtn = document.getElementById("save-config-btn");
-const newChatBtn = document.getElementById("new-chat-btn");
-const tokenCountDisplay = document.getElementById("token-count");
-const tokenBar = document.getElementById("token-bar");
+// DOM Elements
+const messageInput = document.getElementById('message-input');
+const sendBtn = document.getElementById('send-btn');
+const chatMessages = document.getElementById('chat-messages');
+const systemPromptInput = document.getElementById('system-prompt');
+const bufferSizeInput = document.getElementById('buffer-size');
+const temperatureInput = document.getElementById('temperature');
+const saveConfigBtn = document.getElementById('save-config-btn');
+const newChatBtn = document.getElementById('new-chat-btn');
+const tokenCountDisplay = document.getElementById('token-count');
+const tokenBar = document.getElementById('token-bar');
 
 //=== RAG DOM Elements ===\\
 const ragEnabledCheckbox = document.getElementById("rag-enabled");
@@ -35,20 +35,25 @@ const ragDocId = document.getElementById("doc-id")
 // Initialize
 async function init() {
 	try {
+		// start a new chat
+        await startNewChat()
+
 		// Load regular config
-		const configResponse = await fetch("/api/config");
+		const configResponse = await fetch('/api/config', {
+			method: 'GET',
+			headers: { 'Content-Type': 'application/json', 'session': sessionId },
+		});
 		const configData = await configResponse.json();
 		systemPromptInput.value = configData.systemPrompt;
 		bufferSizeInput.value = configData.bufferSize;
 		temperatureInput.value = configData.temperature;
 
-		await startNewChat()
-		addMessageToUI("system", "System initialized with configured system prompt.");
+        addMessageToUI('system', 'System initialized with configured system prompt.');
 
 		// Load RAG config
 		await loadRagConfig();
 	} catch (error) {
-		console.error("Failed to load config:", error);
+		console.error('Failed to load config:', error);
 	}
 }
 
@@ -60,33 +65,39 @@ async function saveConfig() {
 
 	// validate form
 	if (newBufferSize < 1 || newBufferSize > 50) {
-		alert("Buffer size must be between 1 and 50");
+		alert('Buffer size must be between 1 and 50');
 		return;
 	}
 
 	if (newTemperature < 0 || newTemperature > 2) {
-		alert("Temperature must be between 0 and 2");
+		alert('Temperature must be between 0 and 2');
 		return;
 	}
 
 	try {
 		// Save regular config
-		await fetch("/api/config", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
+		let response = await fetch('/api/config', {
+			method: 'POST',
+			headers: {'Content-Type': 'application/json'},
 			body: JSON.stringify({
 				systemPrompt: newSystemPrompt,
 				bufferSize: newBufferSize,
-				temperature: newTemperature
+				temperature: newTemperature,
+				session: sessionId
 			})
 		});
 
+		let data = response.json();
+
 		// Save RAG config
-		if (await saveRagConfig()) {
-			alert("Configuration saved! Start a new chat for system prompt changes to take effect.");
+		if (await saveRagConfig() || response.ok) {
+			alert('Configuration saved! Start a new chat for system prompt changes to take effect.');
+		}
+		else {
+			addMessageToUI("system", "Error:" + data.error);
 		}
 	} catch (error) {
-		alert("Failed to save configuration: ${error.message}");
+		alert(`Failed to save configuration: ${error.message}`);
 	}
 }
 
@@ -102,21 +113,21 @@ async function sendMessage() {
 	userMessageIndex = userMessages.length;
 
 	// Add user message to UI
-	addMessageToUI("user", message);
-	messageInput.value = "";
-	messageInput.style.height = "auto";
+	addMessageToUI('user', message);
+	messageInput.value = '';
+	messageInput.style.height = 'auto';
 
 	// Show loading indicator
-	const loadingId = "loading-" + Date.now();
+	const loadingId = 'loading-' + Date.now();
 	addLoadingToUI(loadingId);
 
 	try {
-		const response = await fetch("/api/chat", {
-			method: "POST",
-			headers: {"Content-Type": "application/json"},
+		const response = await fetch('/api/chat', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
 				message: message,
-				chatId: chatId,
+				session: sessionId,
 				useRag: ragEnabledCheckbox && ragEnabledCheckbox.checked
 			})
 		});
@@ -124,7 +135,7 @@ async function sendMessage() {
 		const data = await response.json();
 
 		if (!response.ok) {
-			throw new Error(data.error || "Failed to get response")
+			throw new Error(data.error || 'Failed to get response');
 		}
 
 		// Remove loading indicator
@@ -141,28 +152,29 @@ async function sendMessage() {
 		}
 
 		// Add assistant response to UI
-		addMessageToUI("assistant", data.response);
+		addMessageToUI('assistant', data.response);
 
 		// Update token count
 		tokenCount = data.tokenCount;
 		updateTokenDisplay(tokenCount);
+
 	} catch (error) {
 		const loadingElement = document.getElementById(loadingId);
 		if (loadingElement) {
 			loadingElement.remove();
 		}
-		addMessageToUI("system", `Error: ${error.message}`);
+		addMessageToUI('system', "Error: " + error.message);
 	}
 }
 
 // Add message to UI
 function addMessageToUI(role, content) {
-	const messageDiv = document.createElement("div");
+	const messageDiv = document.createElement('div');
 	messageDiv.className = `message ${role}`;
 	messageDiv.id = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-	const contentDiv = document.createElement("div");
-	contentDiv.className = "message-content";
+	const contentDiv = document.createElement('div');
+	contentDiv.className = 'message-content';
 
 	// parse response from llm
 	console.log(content)
@@ -176,13 +188,13 @@ function addMessageToUI(role, content) {
 
 // Add loading indicator to UI
 function addLoadingToUI(id) {
-	const messageDiv = document.createElement("div");
-	messageDiv.className = "message assistant";
+	const messageDiv = document.createElement('div');
+	messageDiv.className = 'message assistant';
 	messageDiv.id = id;
 
-	const contentDiv = document.createElement("div");
-	contentDiv.className = "message-content";
-	contentDiv.innerHTML = "<span class=\"loading\"></span>";
+	const contentDiv = document.createElement('div');
+	contentDiv.className = 'message-content';
+	contentDiv.innerHTML = '<span class="loading"></span>';
 
 	messageDiv.appendChild(contentDiv);
 	chatMessages.appendChild(messageDiv);
@@ -205,23 +217,26 @@ function updateTokenDisplay(count) {
 // Start new chat
 async function startNewChat() {
 	try {
-		const response = await fetch("/api/new-chat", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ chatId: chatId })
+		const response = await fetch('/api/new-chat', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				session: localStorage.getItem('session')
+			})
 		});
 
 		const data = await response.json();
 
 		if (response.ok) {
-			chatMessages.innerHTML = "";
-			addMessageToUI("system", "Started new chat session.");
-			chatId = data.chatId;
+			chatMessages.innerHTML = '';
+			addMessageToUI('system', 'Started new chat session.');
+			sessionId = data.session;
 			tokenCount = data.tokenCount;
 			updateTokenDisplay(tokenCount);
+			localStorage.setItem('session', data.session)
 		}
 	} catch (error) {
-		addMessageToUI("system", `Error starting new chat: ${error.message}`);
+		addMessageToUI('system', "Error starting new chat: " + error.message);
 	}
 }
 
@@ -248,22 +263,22 @@ async function systemSession(question) {
 				resolve(answer);
 			}
 		}
-
 		// setup new send
 		const sessionSend = event => answer(event);
 		messageInput.addEventListener("keydown", sessionSend)
 	});
 }
 
+
 // named send function
 function checkSend(e) {
 	// if user clicks enter, then send message
-	if (e.key === "Enter" && !e.shiftKey) {
+	if (e.key === 'Enter' && !e.shiftKey) {
 		e.preventDefault();
 		sendMessage();
 	}
 	// scroll through past prompts
-	else if (e.key === "ArrowUp" && !e.shiftKey) {
+	else if (e.key === 'ArrowUp' && !e.shiftKey) {
 		e.preventDefault();
         if (userMessageIndex-1 >= 0) {
 			messageInput.value = userMessages[--userMessageIndex]
@@ -274,7 +289,7 @@ function checkSend(e) {
 		}
 	}
 	// scroll through past prompts
-	else if (e.key === "ArrowDown" && !e.shiftKey) {
+	else if (e.key === 'ArrowDown' && !e.shiftKey) {
 		e.preventDefault();
 		if (userMessages[userMessageIndex+1] !== undefined) {
 			messageInput.value = userMessages[++userMessageIndex];
@@ -301,7 +316,10 @@ function updateRagUI(message) {
 // loads config from server
 async function loadRagConfig() {
 	try {
-		const response = await fetch("/api/rag/config");
+		const response = await fetch("/api/rag/config", {
+			method: 'GET',
+			headers: { 'Content-Type': 'application/json', 'session': sessionId },
+		});
 		const data = await response.json();
 
 		// update settings
@@ -342,7 +360,8 @@ async function saveRagConfig() {
 			body: JSON.stringify({
 				enabled: ragEnabledCheckbox.checked,
 				topK: ragTopK.value,
-				similarityThreshold: ragSimilarityThreshold.value
+				similarityThreshold: ragSimilarityThreshold.value,
+				session: sessionId
 			})
 		});
 		return true;
@@ -375,7 +394,8 @@ async function saveDocConfig() {
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
 				chunkSize: ragChunkSize.value,
-				chunkOverlap: ragChunkOverlap.value
+				chunkOverlap: ragChunkOverlap.value,
+				session: sessionId
 			})
 		});
 		return true;
@@ -389,7 +409,10 @@ async function saveDocConfig() {
 // request documents from server
 async function refreshRagDocuments() {
 	try {
-		const response = await fetch("/api/rag/documents");
+		const response = await fetch("/api/rag/documents", {
+			method: "GET",
+			headers: { "Content-Type": "application/json", "session": sessionId },
+		});
 		const data = await response.json();
 
 		ragDocsList.innerHTML = "";
@@ -495,7 +518,8 @@ async function uploadDocument() {
 	try {
 		const response = await fetch("/api/rag/upload", {
 			method: "POST",
-			body: formData
+			body: formData,
+			headers: { "session": sessionId }
 		});
 
 		const data = await response.json();
@@ -533,7 +557,11 @@ async function clearAllDocuments() {
 	if (answer.includes("y")) {
 		try {
 			const response = await fetch("/api/rag/clear", {
-				method: "POST"
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					session: sessionId
+				})
 			});
 
 			const data = await response.json();
@@ -559,13 +587,13 @@ sendBtn.addEventListener("click", sendMessage);
 const send = event => checkSend(event);
 messageInput.addEventListener("keydown", send);
 
-messageInput.addEventListener("input", function() {
-	this.style.height = "auto";
-	this.style.height = Math.min(this.scrollHeight, 150) + "px";
+messageInput.addEventListener('input', function() {
+	this.style.height = 'auto';
+	this.style.height = Math.min(this.scrollHeight, 150) + 'px';
 });
 
-newChatBtn.addEventListener("click", startNewChat);
-saveConfigBtn.addEventListener("click", saveConfig);
+newChatBtn.addEventListener('click', startNewChat);
+saveConfigBtn.addEventListener('click', saveConfig);
 
 // RAG Event Listeners
 ragUploadBtn.addEventListener("click", uploadDocument);
