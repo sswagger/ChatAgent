@@ -6,6 +6,7 @@ import threading
 from flask import Flask, request, jsonify, send_from_directory
 from dotenv import load_dotenv
 import requests
+import uuid
 
 # load the environment variables for LLM configuration
 load_dotenv()
@@ -16,7 +17,8 @@ app = Flask(__name__, static_folder='static', static_url_path='/static')
 # Configuration file path
 CONFIG_FILE = 'config.json'
 MCP_CONFIG_FILE = 'mcp_config.json'
-LOG_FILE = 'log.txt'
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_FILE = os.path.join(SCRIPT_DIR, 'logs', 'log-')
 
 # Lock for thread-safe config writes
 config_lock = threading.Lock()
@@ -44,41 +46,40 @@ MCP_CONFIG_DEFAULTS = {
 
 # Global config dictionaries
 chat_history = {}
-mcp_config: dict
-config: dict
-mcp_id: str = ""
+mcp_id: str = "" # fixme
 
 #=== Built-in Tools ===#
 def get_capabilities():
-	try:
-		tools = mcp_config['tools']
-		built_in_tools = [
-			{'name': 'get_capabilities', 'description': 'Get a list of all available tools from the MCP server. Use this when someone asks what tools are available.'},
-			{'name': 'get_time', 'description': 'Gets the current datetime'},
-			{'name': 'get_config', 'description': 'Gets the settings for the chat agent'},
-			{'name': 'get_timezone', 'description': 'Gets the users timezone'},
-			{'name': 'log_message', 'description': 'Adds a message to the log file', 'inputSchema': {
-				"additionalProperties": False,
-				"properties": {
-					"sql": {
-						"type": "text",
-						"description": "(str) The text to log"
-					}
-				},
-				"required": [
-					"text"
-				],
-				"type": "object"
-			}}
-		]
-
-		tool_list = '\n'.join([f"- {t.get('name', 'Unknown')}: {t.get('description', 'No description')} | params: {t.get('inputSchema', 'No parameters')}" for t in tools])
-		tool_list += '\n'.join([f"- {t.get('name', 'Unknown')}: {t.get('description', 'No description')} | params: {t.get('inputSchema', 'No parameters')}" for t in built_in_tools])
-		response = f'The MCP server at {mcp_config['url']} has {len(tools)} tools:\n{tool_list}'
-	except Exception:
-		response = f"Error executing tool get_capabilities: An issue with retrieving tools"
-
-	return response
+	# try:
+	# 	tools = mcp_config['tools']
+	# 	built_in_tools = [
+	# 		{'name': 'get_capabilities', 'description': 'Get a list of all available tools from the MCP server. Use this when someone asks what tools are available.'},
+	# 		{'name': 'get_time', 'description': 'Gets the current datetime'},
+	# 		{'name': 'get_config', 'description': 'Gets the settings for the chat agent'},
+	# 		{'name': 'get_timezone', 'description': 'Gets the users timezone'},
+	# 		{'name': 'log_message', 'description': 'Adds a message to the log file', 'inputSchema': {
+	# 			"additionalProperties": False,
+	# 			"properties": {
+	# 				"sql": {
+	# 					"type": "text",
+	# 					"description": "(str) The text to log"
+	# 				}
+	# 			},
+	# 			"required": [
+	# 				"text"
+	# 			],
+	# 			"type": "object"
+	# 		}}
+	# 	]
+	#
+	# 	tool_list = '\n'.join([f"- {t.get('name', 'Unknown')}: {t.get('description', 'No description')} | params: {t.get('inputSchema', 'No parameters')}" for t in tools])
+	# 	tool_list += '\n'.join([f"- {t.get('name', 'Unknown')}: {t.get('description', 'No description')} | params: {t.get('inputSchema', 'No parameters')}" for t in built_in_tools])
+	# 	response = f'The MCP server at {mcp_config['url']} has {len(tools)} tools:\n{tool_list}'
+	# except Exception:
+	# 	response = f"Error executing tool get_capabilities: An issue with retrieving tools"
+	#
+	# return response # fixme
+	return {}
 
 def get_time():
 	return str(datetime.datetime.now())
@@ -87,7 +88,8 @@ def get_timezone():
 	return time.tzname
 
 def get_config():
-	return config, mcp_config
+	# return config, mcp_config # fixme
+	return {}
 
 def log_text(text: str):
 	try:
@@ -125,8 +127,11 @@ def get_total_tokens(messages):
 	return total
 
 
-def call_llm(messages, use_tools=False, include_capabilities=False):
+def call_llm(messages, session, use_tools=False, include_capabilities=False):
 	"""Call the OpenAI-compatible API."""
+	config = load_config(session, CONFIG_FILE)
+	mcp_config = load_config(session, MCP_CONFIG_FILE)
+
 	headers = {
 		'Content-Type': 'application/json',
 	}
@@ -136,7 +141,7 @@ def call_llm(messages, use_tools=False, include_capabilities=False):
 	payload = {
 		'model': LLM_MODEL,
 		'messages': messages,
-		'temperature': config.get('temperature', 0.7)
+		'temperature': config.get('temperature', USER_CONFIG_DEFAULTS['temperature'])
 	}
 
 	if use_tools and mcp_config.get('enabled', False):
@@ -216,48 +221,64 @@ def call_llm(messages, use_tools=False, include_capabilities=False):
 		response.raise_for_status()
 		result = response.json()
 
-		log_actions("call to LLM", payload, result, error=str(response.status_code))
+		log_actions(session, "call to LLM", payload, result, error=str(response.status_code))
 		return result.get('choices', [{}])[0].get('message', {}), None
 	except Exception as e:
 		return None, str(e)
 
 
-def load_config(config_file: str, default_config):
+def load_config(session, config_file: str):
 	"""Load user config from file, fall back to defaults."""
 	if os.path.exists(config_file):
 		try:
 			with open(config_file, 'r') as f:
-				configurations = json.load(f)
-				for key, value in default_config.items():
-					if key not in configurations:
-						configurations[key] = value
+				# load all json
+				configs = json.load(f)
+
+				if configs.get(session):
+					for key, value in configs.get("default", {}).items():
+						if key not in configs.get(session):
+							configs[session][key] = value
+				else:
+					configs[session] = configs.get("default", {})
+					with open(CONFIG_FILE, 'w') as file:
+						json.dump(configs, file, indent=4)
+
+				return configs.get(session)
 		except (json.JSONDecodeError, IOError):
-			configurations = default_config.copy()
-			save_config(configurations, config_file)
+			return {}
 	else:
-		configurations = default_config.copy()
-		save_config(configurations, config_file)
-
-	return configurations
+		return {}
 
 
-def save_config(configuration: dict, config_file: str):
-	"""Save config to file."""
-	with threading.Lock():
-		with open(config_file, 'w') as f:
-			json.dump(configuration, f, indent=4)
+def save_config(session, configuration, config_file: str):
+	"""Save configuration to a JSON file with thread-safe locking."""
+	if os.path.exists(config_file):
+		try:
+			with open(config_file, 'r') as f:
+				# load all json
+				configs = json.load(f)
+
+				configs[session] = configuration
+				with open(config_file, 'w') as file:
+					json.dump(configs, file, indent=4)
+
+		except (json.JSONDecodeError, IOError):
+			pass
+	else:
+		pass
 
 
-def log_actions(path, request_payload, response_payload, is_new_chat=False, request_method="unknown", error="200"):
+def log_actions(session, path, request_payload, response_payload, is_new_chat=False, request_method="unknown", error="200"):
 	if is_new_chat:
-		with open(LOG_FILE, 'w') as log:
+		with open(LOG_FILE + str(session) + ".txt", 'w') as log:
 			log.write(
 				f"{path}\n"+
 				f"request: json={request_payload} | method={request_method}\n"+
 				f"response: json={response_payload} | error={error}\n\n"
 			)
 	else:
-		with open(LOG_FILE, 'a') as log:
+		with open(LOG_FILE + str(session) + ".txt", 'a') as log:
 			log.write(
 				f"{path}\n"+
 				f"request: json={request_payload} | method={request_method}\n"+
@@ -266,8 +287,10 @@ def log_actions(path, request_payload, response_payload, is_new_chat=False, requ
 
 
 #=== MCP Functions ===#
-def add_mcp_capabilities_instruction(prompt):
+def add_mcp_capabilities_instruction(session, prompt):
 	"""Add MCP capabilities instruction to system prompt."""
+	mcp_config = load_config(session, CONFIG_FILE)
+
 	mcp_url = mcp_config.get('url', '')
 	tool_count = len(mcp_config.get('tools', []))
 
@@ -285,7 +308,7 @@ def add_mcp_capabilities_instruction(prompt):
 
 	return prompt
 
-
+#fixme
 def request_mcp(json_body, mcp_id=None) -> tuple[requests.Response, dict] | str:
 	headers = {
 		'Content-Type': 'application/json',
@@ -327,8 +350,10 @@ def request_mcp(json_body, mcp_id=None) -> tuple[requests.Response, dict] | str:
 		return str(ex)
 
 
-def init_mcp_connection():
+def init_mcp_connection(session):
 	"""Initialize MCP connection if enabled."""
+	mcp_config = load_config(session, MCP_CONFIG_FILE)
+
 	if not mcp_config.get('enabled', False):
 		return None
 
@@ -345,7 +370,7 @@ def init_mcp_connection():
 		save_config(mcp_config, MCP_CONFIG_FILE)
 		return None
 
-
+#fixme
 def execute_mcp_tool(tool_name, tool_input):
 	"""Execute an MCP tool and return the result."""
 	if not mcp_config.get('enabled', False):
@@ -376,7 +401,7 @@ def execute_mcp_tool(tool_name, tool_input):
 	except AttributeError:
 		return None, response[1].get('result').get('content')[0].get('text')
 
-
+#fixme
 def handle_tool_calls(messages, full_response):
 	"""Handle tool calls from LLM response."""
 	message_content = full_response.get('content', '')
@@ -448,46 +473,53 @@ def handle_tool_calls(messages, full_response):
 
 	return message_content, None
 
-
-# Load configs on startup - load mcp_config first for add_mcp_capabilities_instruction
-config = load_config(CONFIG_FILE, USER_CONFIG_DEFAULTS)
-mcp_config = load_config(MCP_CONFIG_FILE, MCP_CONFIG_DEFAULTS)
-
-# Add MCP capabilities instruction to system prompt if MCP is enabled
-if mcp_config.get('enabled', False):
-	mcp_config['systemPrompt'] = add_mcp_capabilities_instruction(config.get('systemPrompt', ''))
-
 @app.route('/')
 def index():
 	"""Serve the main chat interface."""
-	log_actions("/", "", "static/index.html", request_method="GET", is_new_chat=True)
 	return send_from_directory('static', 'index.html')
 
 
 @app.route('/api/config', methods=['GET', 'POST'])
 def config_endpoint():
 	"""Get or update user configuration."""
-	global config
+
 	if request.method == 'GET':
+		# get session
+		session = request.headers.get('session')
+		if not session or chat_history.get(session, None) is None:
+			json_response = {'success': False, 'error': 'session not found'}
+			log_actions("error", "/api/config", json_response, str(json_response), request_method=request.method)
+			return jsonify(json_response)
+
+		config = load_config(session, CONFIG_FILE)
+
 		json_config = {
-			'systemPrompt': config.get('systemPrompt', USER_CONFIG_DEFAULTS['systemPrompt']),
-			'bufferSize': config.get('bufferSize', USER_CONFIG_DEFAULTS['bufferSize']),
-			'temperature': config.get('temperature', USER_CONFIG_DEFAULTS['temperature'])
+			'systemPrompt': config.get('systemPrompt'),
+			'bufferSize': config.get('bufferSize'),
+			'temperature': config.get('temperature'),
 		}
-		log_actions("/api/config", "", str(json_config), request_method=request.method)
+		log_actions(session, "/api/config", "", str(json_config), request_method=request.method)
 		return jsonify(json_config)
 	else:
 		data = request.json
+		session = data.get('session')
+		if not session or chat_history.get(session, None) is None:
+			json_response = {'success': False, 'error': 'session not found'}
+			log_actions("error", "/api/config", data, str(json_response), request_method=request.method, error="400")
+			return jsonify(json_response), 400
+
+		config = load_config(session, CONFIG_FILE)
+
 		if 'systemPrompt' in data:
 			config['systemPrompt'] = data['systemPrompt']
 		if 'bufferSize' in data:
 			config['bufferSize'] = int(data['bufferSize'])
 		if 'temperature' in data:
 			config['temperature'] = float(data['temperature'])
-		save_config(config, CONFIG_FILE)
+		save_config(session, config, CONFIG_FILE)
 
 		response = {'success': True}
-		log_actions("/api/config", data, str(response), request_method=request.method)
+		log_actions(session, "/api/config", data, str(response), request_method=request.method)
 		return jsonify(response)
 
 
@@ -496,99 +528,122 @@ def chat():
 	"""Handle chat message with optional MCP tool integration."""
 	data = request.json
 	message = data.get('message', '')
-	chat_id = data.get('chatId', 'default')
+	session = data.get('session')
 
+	# ensure session is valid
+	if not session or chat_history.get(session, None) is None:
+		json_response = {'error': 'session not found'}
+		log_actions("error", "/api/chat", data, str(json_response), request_method="POST", error="400")
+		return jsonify(json_response), 400
+	config = load_config(session, CONFIG_FILE)
+
+	# ensure that there is a message
 	if not message:
 		json_response = {'error': 'Message is required'}
-		log_actions("/api/chat", data, str(json_response), request_method="POST", error="400")
+		log_actions("error", "/api/chat", data, str(json_response), request_method="POST", error="400")
 		return jsonify(json_response), 400
 
-	# Initialize chat history if needed
-	if chat_id not in chat_history:
-		chat_history[chat_id] = []
-
 	# Add system prompt if this is a new chat
-	if len(chat_history[chat_id]) == 0:
-		chat_history[chat_id].append({'role': 'system', 'content': config.get('systemPrompt', USER_CONFIG_DEFAULTS['systemPrompt'])})
+	if len(chat_history[session]) == 0:
+		chat_history[session].append({'role': 'system', 'content': config.get('systemPrompt', USER_CONFIG_DEFAULTS['systemPrompt'])})
 
 	# Add user message
-	chat_history[chat_id].append({'role': 'user', 'content': message})
+	chat_history[session].append({'role': 'user', 'content': message})
 
 	# Apply buffer size limit
-	if len(chat_history[chat_id]) > config.get('bufferSize', USER_CONFIG_DEFAULTS['bufferSize']) + 1:
-		chat_history[chat_id] = [chat_history[chat_id][0]] + chat_history[chat_id][-config.get('bufferSize', USER_CONFIG_DEFAULTS['bufferSize']):]
+	if len(chat_history[session]) > config.get('bufferSize', USER_CONFIG_DEFAULTS['bufferSize']) + 1:
+		chat_history[session] = [chat_history[session][0]] + chat_history[session][-config.get('bufferSize', USER_CONFIG_DEFAULTS['bufferSize']):]
 
 	# Get response from LLM (with tool calling enabled if MCP is enabled)
 	use_tools = mcp_config.get('enabled', False) and mcp_config.get('connectionStatus', False)
 	# Include get_capabilities function when MCP is enabled
-	full_response, error = call_llm(chat_history[chat_id], use_tools=use_tools, include_capabilities=use_tools)
+	full_response, error = call_llm(chat_history[session], session, use_tools=use_tools, include_capabilities=use_tools)
 
 	if error:
 		json_response = {'error': f'Failed to get response= {error}'}
-		log_actions("/api/chat", data, str(json_response), request_method="POST", error="500")
+		log_actions("error", "/api/chat", data, str(json_response), request_method="POST", error="500")
 		return jsonify(json_response), 500
 
 	# Handle tool calls if any
-	response_content, called_tools = handle_tool_calls(chat_history[chat_id], full_response)
+	response_content, called_tools = handle_tool_calls(chat_history[session], full_response)
 
 	# Add assistant response
-	chat_history[chat_id].append({'role': 'assistant', 'content': response_content})
+	chat_history[session].append({'role': 'assistant', 'content': response_content})
 
 	# Calculate token usage
-	token_count = get_total_tokens(chat_history[chat_id])
+	token_count = get_total_tokens(chat_history[session])
 
 	json_response = {
 		'response': response_content,
 		'tokenCount': token_count,
-		'chatId': chat_id,
 		'calledTools': called_tools
 	}
-	log_actions("/api/chat", data, str(json_response), request_method="POST")
+	log_actions(session, "/api/chat", data, str(json_response), request_method="POST")
 	return jsonify(json_response)
 
 
 @app.route('/api/new-chat', methods=['POST'])
 def new_chat():
 	"""Start a new chat session."""
-	data = request.json or {}
-	chat_id = data.get('chatId', 'default')
-	chat_history[chat_id] = []
-	chat_history[chat_id].append({'role': 'system', 'content': config.get('systemPrompt', USER_CONFIG_DEFAULTS['systemPrompt'])})
+	data = request.json
+	session = data.get('session')
 
-	json_response = {
-		'success': True,
-		'chatId': chat_id,
-		'tokenCount': get_total_tokens(chat_history[chat_id])
-	}
-	log_actions("/api/new-chat", data, str(json_response), request_method="POST", is_new_chat=True)
-	return jsonify(json_response)
+	if not session or chat_history.get(session, None) is None:
+		new_session = str(uuid.uuid4())
+		chat_history[new_session] = []
+
+		json_response = {
+			'success': True,
+			'session': new_session,
+			'tokenCount': get_total_tokens(chat_history[new_session])
+		}
+		log_actions(new_session, "/api/new-chat", data, str(json_response), request_method="POST", is_new_chat=True)
+		return jsonify(json_response)
+	else:
+		config = load_config(session, CONFIG_FILE)
+		chat_history[session] = []
+		chat_history[session].append({'role': 'system', 'content': config['systemPrompt']})
+
+		json_response = {
+			'success': True,
+			'session': session,
+			'tokenCount': get_total_tokens(chat_history[session])
+		}
+		log_actions(session, "/api/new-chat", data, str(json_response), request_method="POST", is_new_chat=True)
+		return jsonify(json_response)
 
 
 @app.route('/api/token-count', methods=['POST'])
 def token_count():
 	"""Get the current token count for a chat."""
 	data = request.json
-	chat_id = data.get('chatId', 'default')
+	session = data.get('session')
 
-	if chat_id not in chat_history:
+	if not session or chat_history.get(session, None) is None:
 		json_response = jsonify({'tokenCount': 0})
-		log_actions("/api/token-count", data, str(json_response), request_method="POST")
+		log_actions("error", "/api/token-count", data, str(json_response), request_method="POST")
 		return json_response
 
-	json_response = {'tokenCount': get_total_tokens(chat_history[chat_id])}
-	log_actions("/api/token-count", data, str(json_response), request_method="POST")
+	json_response = {'tokenCount': get_total_tokens(chat_history[session])}
+	log_actions(session, "/api/token-count", data, str(json_response), request_method="POST")
 	return jsonify(json_response)
 
 
 @app.route('/api/log', methods=['POST'])
 def log_data():
 	data = request.json
+	session = data.get('session')
 
-	with open(LOG_FILE, 'a') as log:
+	if not session or chat_history.get(session, None) is None:
+		json_response = {'success': False, 'error': 'session not found'}
+		log_actions("error", "/api/log", data, str(json_response), request_method="POST")
+		return jsonify(json_response)
+
+	with open(LOG_FILE + session + ".txt", 'a') as log:
 		log.write(data.get("log") + "\n\n")
 
 	json_response = {"success": True}
-	log_actions('/api/log', data, str(json_response), request_method="POST")
+	log_actions(session, '/api/log', data, str(json_response), request_method="POST")
 	return jsonify(json_response)
 
 
@@ -596,8 +651,16 @@ def log_data():
 @app.route('/api/mcp/config', methods=['GET', 'POST'])
 def mcp_config_endpoint():
 	"""Get or update MCP configuration."""
-	global mcp_config
 	if request.method == 'GET':
+		# get session
+		session = request.headers.get('session')
+		if not session or chat_history.get(session, None) is None:
+			json_response = {'success': False, 'error': 'session not found'}
+			log_actions("error", "/api/config", json_response, str(json_response), request_method=request.method)
+			return jsonify(json_response)
+
+		mcp_config = load_config(session, MCP_CONFIG_FILE)
+
 		return jsonify({
 			'enabled': mcp_config.get('enabled', False),
 			'url': mcp_config.get('url', MCP_CONFIG_DEFAULTS['url']),
@@ -606,18 +669,35 @@ def mcp_config_endpoint():
 		})
 	else:
 		data = request.json
+		session = data.get('session')
+		if not session or chat_history.get(session, None) is None:
+			json_response = {'success': False, 'error': 'session not found'}
+			log_actions("error", "/api/config", data, str(json_response), request_method=request.method, error="400")
+			return jsonify(json_response), 400
+
+		mcp_config = load_config(session, MCP_CONFIG_FILE)
+
 		if 'enabled' in data:
 			mcp_config['enabled'] = bool(data['enabled'])
 		if 'url' in data:
 			mcp_config['url'] = data['url']
-		save_config(mcp_config, MCP_CONFIG_FILE)
+		save_config(session, mcp_config, MCP_CONFIG_FILE)
 		return jsonify({'success': True})
 
 
 @app.route('/api/mcp/connect', methods=['POST'])
 def mcp_connect():
 	"""Connect to MCP server."""
-	global mcp_config, mcp_id
+	global mcp_id
+
+	data = request.json
+	session = data.get('session')
+	if not session or chat_history.get(session, None) is None:
+		json_response = {'success': False, 'error': 'session not found'}
+		log_actions("error", "/api/config", data, str(json_response), request_method=request.method, error="400")
+		return jsonify(json_response), 400
+
+	mcp_config = load_config(session, MCP_CONFIG_FILE)
 
 	url = mcp_config.get('url', '')
 	if not url:
@@ -659,34 +739,52 @@ def mcp_connect():
 
 			mcp_config['connectionStatus'] = 'connected'
 			mcp_config['lastError'] = None
-			save_config(mcp_config, MCP_CONFIG_FILE)
+			save_config(session, mcp_config, MCP_CONFIG_FILE)
 			return jsonify({'success': True, 'message': 'Connected to MCP server', 'sessionId': mcp_id})
 
 		except Exception as e:
 			mcp_config['connectionStatus'] = 'error'
 			mcp_config['lastError'] = str(e)
-			save_config(mcp_config, MCP_CONFIG_FILE)
+			save_config(session, mcp_config, MCP_CONFIG_FILE)
 			return jsonify({'success': False, 'error': str(e)}), 500
 
 	except Exception as e:
 		mcp_config['connectionStatus'] = 'error'
 		mcp_config['lastError'] = str(e)
-		save_config(mcp_config, MCP_CONFIG_FILE)
+		save_config(session, mcp_config, MCP_CONFIG_FILE)
 		return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/mcp/disconnect', methods=['POST'])
 def mcp_disconnect():
 	"""Disconnect from MCP server."""
+	data = request.json
+	session = data.get('session')
+	if not session or chat_history.get(session, None) is None:
+		json_response = {'success': False, 'error': 'session not found'}
+		log_actions("error", "/api/config", data, str(json_response), request_method=request.method, error="400")
+		return jsonify(json_response), 400
+
+	mcp_config = load_config(session, MCP_CONFIG_FILE)
+
 	mcp_config['connectionStatus'] = 'disconnected'
 	mcp_config['tools'] = []
-	save_config(mcp_config, MCP_CONFIG_FILE)
+	save_config(session, mcp_config, MCP_CONFIG_FILE)
 	return jsonify({'success': True, 'message': 'Disconnected from MCP server'})
 
 
 @app.route('/api/mcp/tools', methods=['GET'])
 def mcp_tools():
 	"""Get list of available MCP tools."""
+	# get session
+	session = request.headers.get('session')
+	if not session or chat_history.get(session, None) is None:
+		json_response = {'success': False, 'error': 'session not found'}
+		log_actions("error", "/api/config", json_response, str(json_response), request_method=request.method)
+		return jsonify(json_response)
+
+	mcp_config = load_config(session, MCP_CONFIG_FILE)
+
 	# Try to fetch tools from MCP server
 	try:
 		response = request_mcp({
@@ -722,6 +820,12 @@ def mcp_tools():
 def mcp_execute():
 	"""Execute an MCP tool."""
 	data = request.json
+	session = data.get('session')
+	if not session or chat_history.get(session, None) is None:
+		json_response = {'success': False, 'error': 'session not found'}
+		log_actions("error", "/api/config", data, str(json_response), request_method=request.method, error="400")
+		return jsonify(json_response), 400
+
 	tool_name = data.get('tool', '')
 	tool_input = data.get('input', {})
 
@@ -737,4 +841,4 @@ def mcp_execute():
 
 
 if __name__ == '__main__':
-	app.run(host='0.0.0.0', port=config.get('port', USER_CONFIG_DEFAULTS['port']), debug=True)
+	app.run(host='0.0.0.0', port=load_config("default", CONFIG_FILE).get("port"), debug=True)

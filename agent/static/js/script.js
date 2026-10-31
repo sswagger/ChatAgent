@@ -1,3 +1,5 @@
+// fixme: add sessionId to all mcp requests
+// todo: remove mcpConfig
 // Chat configuration
 
 // MCP configuration
@@ -9,8 +11,8 @@ let mcpConfig = {
 	tools: []
 };
 
-let chatId = 'default';
 let tokenCount = 0;
+let sessionId = "";
 let userMessages = []
 let userMessageIndex = 0;
 
@@ -39,27 +41,33 @@ const refreshToolsBtn = document.getElementById('refreshToolsBtn');
 // Initialize
 async function init() {
 	try {
+		// start a new chat
+        await startNewChat()
+
 		// Load regular config
-		const configResponse = await fetch('/api/config');
+		const configResponse = await fetch('/api/config', {
+			method: 'GET',
+			headers: { 'Content-Type': 'application/json', 'session': sessionId },
+		});
 		const configData = await configResponse.json();
 		systemPromptInput.value = configData.systemPrompt;
 		bufferSizeInput.value = configData.bufferSize;
 		temperatureInput.value = configData.temperature;
 
 		// Load MCP config
-		const mcpResponse = await fetch('/api/mcp/config');
+		const mcpResponse = await fetch('/api/mcp/config', {
+			method: 'GET',
+			headers: { 'Content-Type': 'application/json', 'session': sessionId },
+		});
 		const mcpData = await mcpResponse.json();
-		mcpConfig.enabled = mcpData.enabled || false;
-		mcpConfig.url = mcpData.url || '';
+		mcpEnabledCheckbox.checked = mcpData.enabled || false;
+		mcpUrlInput.value = mcpData.url || '';
 		mcpConfig.connectionStatus = mcpData.connectionStatus || 'disconnected';
 		mcpConfig.tools = mcpData.tools || [];
 
 		await disconnectMCP()
-		mcpUrlInput.value = mcpConfig.url;
-		mcpEnabledCheckbox.checked = mcpConfig.enabled;
 		updateMcpUI();
 
-        await startNewChat()
         addMessageToUI('system', 'System initialized with configured system prompt.');
 	} catch (error) {
 		console.error('Failed to load config:', error);
@@ -88,13 +96,14 @@ async function saveConfig() {
 
 	try {
 		// Save regular config
-		await fetch('/api/config', {
+		let response = await fetch('/api/config', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
 				systemPrompt: newSystemPrompt,
 				bufferSize: newBufferSize,
-				temperature: newTemperature
+				temperature: newTemperature,
+				session: sessionId
 			})
 		});
 
@@ -108,15 +117,18 @@ async function saveConfig() {
                 enabled: newMcpEnabled
             })
         });
-
-		config.systemPrompt = newSystemPrompt;
-		config.bufferSize = newBufferSize;
-		config.temperature = newTemperature;
         mcpConfig.url = newMcpUrl;
         mcpConfig.apiKey = newMcpApiKey;
         mcpConfig.enabled = newMcpEnabled;
 
-		alert('Configuration saved! Start a new chat for system prompt changes to take effect.');
+		let data = response.json();
+
+		if (response.ok) {
+			alert('Configuration saved! Start a new chat for system prompt changes to take effect.');
+		}
+		else {
+			addMessageToUI("system", "Error:" + data.error);
+		}
 	} catch (error) {
 		alert(`Failed to save configuration: ${error.message}`);
 	}
@@ -148,7 +160,7 @@ async function sendMessage() {
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
 				message: message,
-				chatId: chatId
+				session: sessionId
 			})
 		});
 
@@ -236,7 +248,9 @@ async function startNewChat() {
 		const response = await fetch('/api/new-chat', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ chatId: chatId })
+			body: JSON.stringify({
+				session: localStorage.getItem('session')
+			})
 		});
 
 		const data = await response.json();
@@ -244,9 +258,10 @@ async function startNewChat() {
 		if (response.ok) {
 			chatMessages.innerHTML = '';
 			addMessageToUI('system', 'Started new chat session.');
-			chatId = data.chatId;
+			sessionId = data.session;
 			tokenCount = data.tokenCount;
 			updateTokenDisplay(tokenCount);
+			localStorage.setItem('session', data.session)
 		}
 	} catch (error) {
 		addMessageToUI('system', `Error starting new chat: ${error.message}`);
