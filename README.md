@@ -36,3 +36,4 @@ This will create a docker container at `localhost:8080` that you can open in any
 The app will automatically create a `config.json` and various `log-[session-id].txt`.
 The `config.json` saves your chat settings across sessions.
 The `log-[session-id].txt` logs all request/response payloads, and resets when a new chat session is created.
+Please note that there will be residual logs and configs every time the server is restarted.
