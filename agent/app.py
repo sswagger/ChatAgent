@@ -39,14 +39,14 @@ USER_CONFIG_DEFAULTS = {
 # MCP config defaults
 MCP_CONFIG_DEFAULTS = {
 	'enabled': False,
-	'url': os.getenv('MCP_URL', 'http://restaurant-mcp:8000/mcp'),
+	'url': '',
 	'connectionStatus': 'disconnected',
 	'tools': []
 }
 
 # Global config dictionaries
 chat_history = {}
-mcp_id: str = "" # fixme
+mcp_id = {"default": ""}
 
 #=== Built-in Tools ===#
 def get_capabilities():
@@ -144,9 +144,9 @@ def call_llm(messages, session, use_tools=False, include_capabilities=False):
 		'temperature': config.get('temperature', USER_CONFIG_DEFAULTS['temperature'])
 	}
 
+	tools = []
 	if use_tools and mcp_config.get('enabled', False):
 		# Convert MCP tools to OpenAI tools format
-		tools = []
 		for tool in mcp_config.get('tools', []):
 			tools.append({
 				'type': 'function',
@@ -156,64 +156,65 @@ def call_llm(messages, session, use_tools=False, include_capabilities=False):
 					'parameters': tool.get('parameters', {})
 				}
 			})
+		payload['tools'] = tools
 
-		# Add built-in tools if requested
-		if include_capabilities:
-			tools.append({
-				'type': 'function',
-				'function': {
-					'name': 'get_capabilities',
-					'description': 'Get a list of all available tools from the MCP server. Use this when someone asks what tools are available.',
-					'parameters': {
-						'type': 'object',
-						'properties': {}
-					}
+	# Add built-in tools if requested
+	if include_capabilities:
+		tools.append({
+			'type': 'function',
+			'function': {
+				'name': 'get_capabilities',
+				'description': 'Get a list of all available tools from the MCP server. Use this when someone asks what tools are available.',
+				'parameters': {
+					'type': 'object',
+					'properties': {}
 				}
-			})
-			tools.append({
-				'type': 'function',
-				'function': {
-					'name': 'get_time',
-					'description': 'Gets the current datetime',
-					'parameters': {
-						'type': 'object',
-						'properties': {}
-					}
+			}
+		})
+		tools.append({
+			'type': 'function',
+			'function': {
+				'name': 'get_time',
+				'description': 'Gets the current datetime',
+				'parameters': {
+					'type': 'object',
+					'properties': {}
 				}
-			})
-			tools.append({
-				'type': 'function',
-				'function': {
-					'name': 'get_config',
-					'description': 'Gets the settings for the chat agent',
-					'parameters': {
-						'type': 'object',
-						'properties': {}
-					}
+			}
+		})
+		tools.append({
+			'type': 'function',
+			'function': {
+				'name': 'get_config',
+				'description': 'Gets the settings for the chat agent',
+				'parameters': {
+					'type': 'object',
+					'properties': {}
 				}
-			})
-			tools.append({
-				'type': 'function',
-				'function': {
-					'name': 'get_timezone',
-					'description': 'Gets the users timezone',
-					'parameters': {
-						'type': 'object',
-						'properties': {}
-					}
+			}
+		})
+		tools.append({
+			'type': 'function',
+			'function': {
+				'name': 'get_timezone',
+				'description': 'Gets the users timezone',
+				'parameters': {
+					'type': 'object',
+					'properties': {}
 				}
-			})
-			tools.append({
-				'type': 'function',
-				'function': {
-					'name': 'log_message',
-					'description': 'Adds a message to the log file',
-					'parameters': {
-						'type': 'object',
-						'properties': {'text': {'type': 'string', 'description': '(str) message you want to log'}}
-					}
+			}
+		})
+		tools.append({
+			'type': 'function',
+			'function': {
+				'name': 'log_message',
+				'description': 'Adds a message to the log file',
+				'parameters': {
+					'type': 'object',
+					'properties': {'text': {'type': 'string', 'description': '(str) message you want to log'}}
 				}
-			})
+			}
+		})
 		payload['tools'] = tools
 
 	try:
@@ -308,14 +309,15 @@ def add_mcp_capabilities_instruction(session, prompt):
 
 	return prompt
 
-#fixme
-def request_mcp(json_body, mcp_id=None) -> tuple[requests.Response, dict] | str:
+
+def request_mcp(session, json_body, request_mcp_id=None) -> tuple[requests.Response, dict] | str:
+	mcp_config = load_config(session, MCP_CONFIG_FILE)
 	headers = {
 		'Content-Type': 'application/json',
 		'Accept': 'application/json, text/event-stream'
 	}
-	if mcp_id is not None:
-		headers["mcp-session-id"] = mcp_id
+	if request_mcp_id is not None:
+		headers["mcp-session-id"] = mcp_id[session]
 
 	try:
 		response = requests.post(
@@ -332,18 +334,18 @@ def request_mcp(json_body, mcp_id=None) -> tuple[requests.Response, dict] | str:
 			json_str = raw_text[json_data_start + 6:].strip() # Skip 'data: ' prefix
 			try:
 				json_response = json.loads(json_str)
-				log_actions("call to MCP", json_body, json_response)
+				log_actions(session, "call to MCP", json_body, json_response)
 
 				return response, json_response
 			except json.JSONDecodeError as e:
 				mcp_config['connectionStatus'] = 'error'
 				mcp_config['lastError'] = str(e)
-				save_config(mcp_config, MCP_CONFIG_FILE)
+				save_config(session, mcp_config, MCP_CONFIG_FILE)
 				return "error: failed to parse response into json"
 		else:
 			mcp_config['connectionStatus'] = 'error'
 			mcp_config['lastError'] = raw_text
-			save_config(mcp_config, MCP_CONFIG_FILE)
+			save_config(session, mcp_config, MCP_CONFIG_FILE)
 			return "error: no data to parse into json"
 
 	except Exception as ex:
@@ -367,12 +369,14 @@ def init_mcp_connection(session):
 	except Exception as e:
 		mcp_config['connectionStatus'] = 'error'
 		mcp_config['lastError'] = str(e)
-		save_config(mcp_config, MCP_CONFIG_FILE)
+		save_config(session, mcp_config, MCP_CONFIG_FILE)
 		return None
 
-#fixme
-def execute_mcp_tool(tool_name, tool_input):
+
+def execute_mcp_tool(session, tool_name, tool_input):
 	"""Execute an MCP tool and return the result."""
+	mcp_config = load_config(session, MCP_CONFIG_FILE)
+
 	if not mcp_config.get('enabled', False):
 		return None, 'MCP is not enabled'
 	url = mcp_config.get('url', '')
@@ -384,6 +388,7 @@ def execute_mcp_tool(tool_name, tool_input):
 		# HTTP/HTTPS connection with JSON-RPC 2.0 (standard MCP)
 		# Build headers, including auth only if API key is set
 		response = request_mcp(
+			session,
 			{
 				'jsonrpc': '2.0',
 				'method': 'tools/call',
@@ -393,7 +398,7 @@ def execute_mcp_tool(tool_name, tool_input):
 				},
 				'id': 1
 			},
-			mcp_id
+			mcp_id[session]
 		)
 		if type(response) is str:
 			return None, "MCP session Id timed out; reconnect for a new Id"
@@ -401,8 +406,8 @@ def execute_mcp_tool(tool_name, tool_input):
 	except AttributeError:
 		return None, response[1].get('result').get('content')[0].get('text')
 
-#fixme
-def handle_tool_calls(messages, full_response):
+
+def handle_tool_calls(session, messages, full_response):
 	"""Handle tool calls from LLM response."""
 	message_content = full_response.get('content', '')
 	tool_calls = full_response.get('tool_calls', [])
@@ -432,7 +437,7 @@ def handle_tool_calls(messages, full_response):
 				# Special handling for log_message - don't call MCP server
 				tool_response = log_text(tool_args.get('text', "no text provided"))
 			else:
-				tool_response, error = execute_mcp_tool(tool_name, tool_args)
+				tool_response, error = execute_mcp_tool(session, tool_name, tool_args)
 
 			messages.append({
 				'role': 'assistant',
@@ -464,7 +469,7 @@ def handle_tool_calls(messages, full_response):
 				})
 
 		# Get next response from LLM
-		next_response, error = call_llm(messages, use_tools=False)
+		next_response, error = call_llm(session, messages, use_tools=False)
 		if error:
 			return f"Error: {error}", tool_log
 		if next_response:
@@ -473,6 +478,7 @@ def handle_tool_calls(messages, full_response):
 
 	return message_content, None
 
+# Flask endpoint
 @app.route('/')
 def index():
 	"""Serve the main chat interface."""
@@ -536,6 +542,7 @@ def chat():
 		log_actions("error", "/api/chat", data, str(json_response), request_method="POST", error="400")
 		return jsonify(json_response), 400
 	config = load_config(session, CONFIG_FILE)
+	mcp_config = load_config(session, MCP_CONFIG_FILE)
 
 	# ensure that there is a message
 	if not message:
@@ -555,9 +562,10 @@ def chat():
 		chat_history[session] = [chat_history[session][0]] + chat_history[session][-config.get('bufferSize', USER_CONFIG_DEFAULTS['bufferSize']):]
 
 	# Get response from LLM (with tool calling enabled if MCP is enabled)
-	use_tools = mcp_config.get('enabled', False) and mcp_config.get('connectionStatus', False)
+	use_tools = mcp_config.get('enabled', False) and mcp_config.get('connected', False)
+	use_capabilities = mcp_config.get('enabled', False)
 	# Include get_capabilities function when MCP is enabled
-	full_response, error = call_llm(chat_history[session], session, use_tools=use_tools, include_capabilities=use_tools)
+	full_response, error = call_llm(chat_history[session], session, use_tools=use_tools, include_capabilities=use_capabilities)
 
 	if error:
 		json_response = {'error': f'Failed to get response= {error}'}
@@ -565,7 +573,7 @@ def chat():
 		return jsonify(json_response), 500
 
 	# Handle tool calls if any
-	response_content, called_tools = handle_tool_calls(chat_history[session], full_response)
+	response_content, called_tools = handle_tool_calls(session, chat_history[session], full_response)
 
 	# Add assistant response
 	chat_history[session].append({'role': 'assistant', 'content': response_content})
@@ -688,8 +696,6 @@ def mcp_config_endpoint():
 @app.route('/api/mcp/connect', methods=['POST'])
 def mcp_connect():
 	"""Connect to MCP server."""
-	global mcp_id
-
 	data = request.json
 	session = data.get('session')
 	if not session or chat_history.get(session, None) is None:
@@ -708,6 +714,7 @@ def mcp_connect():
 		# Test connection by calling tools/list endpoint
 		try:
 			response = request_mcp(
+				session,
 				{
 					"jsonrpc": "2.0",
 					"id": 1,
@@ -725,14 +732,15 @@ def mcp_connect():
 			if type(response) is str:
 				return jsonify({'success': False, 'error': 'initial connection request | {}'.format(response)}), 400
 
-			mcp_id = response[0].headers["mcp-session-id"]
+			mcp_id[session] = response[0].headers["mcp-session-id"]
 			request_mcp(
+				session,
 				{
 					"jsonrpc": "2.0",
 					"method": "notifications/initialized",
 					"params": {}
 				},
-				mcp_id
+				mcp_id[session]
 			)
 			if type(response) is str:
 				return jsonify({'success': False, 'error': 'second connection request | {}'.format(response)}), 400
@@ -740,7 +748,7 @@ def mcp_connect():
 			mcp_config['connectionStatus'] = 'connected'
 			mcp_config['lastError'] = None
 			save_config(session, mcp_config, MCP_CONFIG_FILE)
-			return jsonify({'success': True, 'message': 'Connected to MCP server', 'sessionId': mcp_id})
+			return jsonify({'success': True, 'message': 'Connected to MCP server', 'sessionId': mcp_id[session]})
 
 		except Exception as e:
 			mcp_config['connectionStatus'] = 'error'
@@ -787,12 +795,14 @@ def mcp_tools():
 
 	# Try to fetch tools from MCP server
 	try:
-		response = request_mcp({
+		response = request_mcp(
+			session,
+			{
 				'jsonrpc': '2.0',
 				'method': 'tools/list',
 				'id': 1
 			},
-			mcp_id
+			mcp_id[session]
 		)
 
 		if type(response) is str:
@@ -809,7 +819,7 @@ def mcp_tools():
 			tools = response[1].get('tools', [])
 
 		mcp_config['tools'] = tools
-		save_config(mcp_config, MCP_CONFIG_FILE)
+		save_config(session, mcp_config, MCP_CONFIG_FILE)
 	except Exception as e:
 		return jsonify({'tools': [], 'error': str(e)})
 
@@ -832,7 +842,7 @@ def mcp_execute():
 	if not tool_name:
 		return jsonify({'success': False, 'error': 'Tool name required'}), 400
 
-	output, error = execute_mcp_tool(tool_name, tool_input)
+	output, error = execute_mcp_tool(session, tool_name, tool_input)
 
 	if error:
 		return jsonify({'success': False, 'error': error}), 500
@@ -841,4 +851,7 @@ def mcp_execute():
 
 
 if __name__ == '__main__':
+	USER_CONFIG_DEFAULTS = load_config("default", CONFIG_FILE)
+	MCP_CONFIG_DEFAULTS = load_config("default", MCP_CONFIG_FILE)
+
 	app.run(host='0.0.0.0', port=load_config("default", CONFIG_FILE).get("port"), debug=True)

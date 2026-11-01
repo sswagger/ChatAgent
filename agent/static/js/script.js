@@ -1,16 +1,10 @@
-// fixme: add sessionId to all mcp requests
-// todo: remove mcpConfig
 // Chat configuration
 
 // MCP configuration
-let mcpConfig = {
-	enabled: false,
-	url: '',
-	apiKey: '',
-	connectionStatus: '',
-	tools: []
-};
 
+let apiKey = '';
+let tools = []
+let connected = 'disconnected';
 let tokenCount = 0;
 let sessionId = "";
 let userMessages = []
@@ -62,8 +56,8 @@ async function init() {
 		const mcpData = await mcpResponse.json();
 		mcpEnabledCheckbox.checked = mcpData.enabled || false;
 		mcpUrlInput.value = mcpData.url || '';
-		mcpConfig.connectionStatus = mcpData.connectionStatus || 'disconnected';
-		mcpConfig.tools = mcpData.tools || [];
+		connected = mcpData.connectionStatus || 'disconnected';
+		tools = mcpData.tools || [];
 
 		await disconnectMCP()
 		updateMcpUI();
@@ -117,9 +111,9 @@ async function saveConfig() {
                 enabled: newMcpEnabled
             })
         });
-        mcpConfig.url = newMcpUrl;
-        mcpConfig.apiKey = newMcpApiKey;
-        mcpConfig.enabled = newMcpEnabled;
+        mcpUrlInput.value = newMcpUrl;
+        apiKey = newMcpApiKey;
+        mcpEnabledCheckbox.checked = newMcpEnabled;
 
 		let data = response.json();
 
@@ -271,12 +265,12 @@ async function startNewChat() {
 //=== MCP ===\\
 // Update MCP UI based on connection status
 function updateMcpUI() {
-    if (mcpConfig.connectionStatus === 'connected') {
+    if (connected === 'connected') {
         mcpStatusBadge.textContent = 'Connected';
         mcpStatusBadge.className = 'status-badge status-connected';
         mcpConnectBtn.style.display = 'none';
         mcpDisconnectBtn.style.display = 'inline-block';
-    } else if (mcpConfig.connectionStatus === 'error') {
+    } else if (connected === 'error') {
         mcpStatusBadge.textContent = 'Error';
         mcpStatusBadge.className = 'status-badge status-error';
         mcpConnectBtn.style.display = 'inline-block';
@@ -292,10 +286,11 @@ function updateMcpUI() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            url: mcpConfig.url,
-            enabled: mcpConfig.enabled,
-            connectionStatus: mcpConfig.connectionStatus,
-            tools: mcpConfig.tools
+            url: mcpUrlInput,
+            enabled: mcpEnabledCheckbox,
+            connectionStatus: connected,
+            tools: tools,
+			session: sessionId
         })
     });
 }
@@ -332,7 +327,8 @@ async function connectMCP() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                url: url
+                url: url,
+				session: sessionId
             })
         });
 
@@ -349,8 +345,8 @@ async function connectMCP() {
 		}
 
         // Update config
-        mcpConfig.url = url;
-        mcpConfig.connectionStatus = 'connected';
+        mcpUrlInput.value = url;
+        connected = 'connected';
         mcpId.value = data.sessionId
         updateMcpUI();
 
@@ -365,7 +361,7 @@ async function connectMCP() {
 			loadingElement.remove();
 		}
 
-        mcpConfig.connectionStatus = 'error';
+        connected = 'error';
         updateMcpUI();
         addMessageToUI('system', `Error connecting to MCP: ${error.message}`);
     }
@@ -376,13 +372,16 @@ async function disconnectMCP() {
     try {
         const response = await fetch('/api/mcp/disconnect', {
             method: 'POST',
+			body:  JSON.stringify({
+				session: sessionId
+            }),
             headers: { 'Content-Type': 'application/json' }
         });
 
         const data = await response.json();
 
         if (response.ok) {
-            mcpConfig.connectionStatus = 'disconnected';
+            connected = 'disconnected';
             updateMcpUI();
             addMessageToUI('system', data.message);
             mcpToolsList.innerHTML = "<p class=\"no-tools\">No tools loaded. Connect to an MCP server first.</p>"
@@ -404,9 +403,9 @@ async function refreshTools() {
         const data = await response.json();
 
         if (response.ok) {
-            mcpConfig.tools = data.tools || [];
-            updateMcpToolsList(mcpConfig.tools);
-            addMessageToUI('system', `Loaded ${mcpConfig.tools.length} tools from MCP`);
+            tools = data.tools || [];
+            updateMcpToolsList(tools);
+            addMessageToUI('system', `Loaded ${tools.length} tools from MCP`);
         } else {
             addMessageToUI('system', `Error fetching tools: ${data.error || 'Unknown error'}`);
         }
@@ -463,19 +462,6 @@ saveConfigBtn.addEventListener('click', saveConfig);
 mcpConnectBtn.addEventListener('click', connectMCP);
 mcpDisconnectBtn.addEventListener('click', disconnectMCP);
 refreshToolsBtn.addEventListener('click', refreshTools);
-
-// MCP config change listeners
-mcpUrlInput.addEventListener('change', (e) => {
-    mcpConfig.url = e.target.value.trim();
-});
-
-mcpId.addEventListener('change', (e) => {
-    mcpConfig.apiKey = e.target.value;
-});
-
-mcpEnabledCheckbox.addEventListener('change', (e) => {
-    mcpConfig.enabled = e.target.checked;
-});
 
 // Initialize on load
 init();
