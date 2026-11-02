@@ -57,7 +57,7 @@ def get_capabilities(session):
 			{'name': 'get_capabilities', 'description': 'Get a list of all available tools from the MCP server. Use this when someone asks what tools are available.'},
 			{'name': 'get_time', 'description': 'Gets the current datetime'},
 			{'name': 'get_config', 'description': 'Gets the settings for the chat agent'},
-			{'name': 'get_timezone', 'description': 'Gets the users timezone'},
+			{'name': 'get_timezone', 'description': 'Gets the servers timezone'},
 			{'name': 'log_message', 'description': 'Adds a message to the log file', 'inputSchema': {
 				"additionalProperties": False,
 				"properties": {
