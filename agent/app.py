@@ -242,7 +242,7 @@ def load_config(session, config_file: str):
 							configs[session][key] = value
 				else:
 					configs[session] = configs.get("default", {})
-					with open(CONFIG_FILE, 'w') as file:
+					with open(config_file, 'w') as file:
 						json.dump(configs, file, indent=4)
 
 				return configs.get(session)
@@ -469,7 +469,7 @@ def handle_tool_calls(session, messages, full_response):
 				})
 
 		# Get next response from LLM
-		next_response, error = call_llm(session, messages, use_tools=False)
+		next_response, error = call_llm(messages, session, use_tools=False)
 		if error:
 			return f"Error: {error}", tool_log
 		if next_response:
@@ -689,6 +689,10 @@ def mcp_config_endpoint():
 			mcp_config['enabled'] = bool(data['enabled'])
 		if 'url' in data:
 			mcp_config['url'] = data['url']
+		if 'connectionStatus' in data:
+			mcp_config['connectionStatus'] = data['connectionStatus']
+		if 'systemPrompt' in data:
+			mcp_config['systemPrompt'] = data['systemPrompt']
 		save_config(session, mcp_config, MCP_CONFIG_FILE)
 		return jsonify({'success': True})
 
@@ -798,9 +802,9 @@ def mcp_tools():
 		response = request_mcp(
 			session,
 			{
-				'jsonrpc': '2.0',
-				'method': 'tools/list',
-				'id': 1
+				"jsonrpc": "2.0",
+				"method": "tools/list",
+				"id": 1
 			},
 			mcp_id[session]
 		)

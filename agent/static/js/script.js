@@ -1,10 +1,9 @@
-// Chat configuration
-
 // MCP configuration
-
 let apiKey = '';
 let tools = []
 let connected = 'disconnected';
+
+// Chat configuration
 let tokenCount = 0;
 let sessionId = "";
 let userMessages = []
@@ -108,12 +107,11 @@ async function saveConfig() {
             body: JSON.stringify({
                 url: newMcpUrl,
                 apiKey: newMcpApiKey,
-                enabled: newMcpEnabled
+                enabled: newMcpEnabled,
+				session: sessionId
             })
         });
-        mcpUrlInput.value = newMcpUrl;
         apiKey = newMcpApiKey;
-        mcpEnabledCheckbox.checked = newMcpEnabled;
 
 		let data = response.json();
 
@@ -286,8 +284,8 @@ function updateMcpUI() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            url: mcpUrlInput,
-            enabled: mcpEnabledCheckbox,
+            url: mcpUrlInput.value.trim(),
+            enabled: mcpEnabledCheckbox.checked,
             connectionStatus: connected,
             tools: tools,
 			session: sessionId
@@ -399,7 +397,10 @@ async function refreshTools() {
 		const loadingId = 'loading-' + Date.now();
 		addLoadingToUI(loadingId, 'system');
 
-        const response = await fetch('/api/mcp/tools');
+        const response = await fetch('/api/mcp/tools', {
+			method: 'GET',
+			headers: { 'Content-Type': 'application/json', 'session': sessionId }
+		});
         const data = await response.json();
 
         if (response.ok) {
