@@ -49,37 +49,37 @@ chat_history = {}
 mcp_id = {"default": ""}
 
 #=== Built-in Tools ===#
-def get_capabilities():
-	# try:
-	# 	tools = mcp_config['tools']
-	# 	built_in_tools = [
-	# 		{'name': 'get_capabilities', 'description': 'Get a list of all available tools from the MCP server. Use this when someone asks what tools are available.'},
-	# 		{'name': 'get_time', 'description': 'Gets the current datetime'},
-	# 		{'name': 'get_config', 'description': 'Gets the settings for the chat agent'},
-	# 		{'name': 'get_timezone', 'description': 'Gets the users timezone'},
-	# 		{'name': 'log_message', 'description': 'Adds a message to the log file', 'inputSchema': {
-	# 			"additionalProperties": False,
-	# 			"properties": {
-	# 				"sql": {
-	# 					"type": "text",
-	# 					"description": "(str) The text to log"
-	# 				}
-	# 			},
-	# 			"required": [
-	# 				"text"
-	# 			],
-	# 			"type": "object"
-	# 		}}
-	# 	]
-	#
-	# 	tool_list = '\n'.join([f"- {t.get('name', 'Unknown')}: {t.get('description', 'No description')} | params: {t.get('inputSchema', 'No parameters')}" for t in tools])
-	# 	tool_list += '\n'.join([f"- {t.get('name', 'Unknown')}: {t.get('description', 'No description')} | params: {t.get('inputSchema', 'No parameters')}" for t in built_in_tools])
-	# 	response = f'The MCP server at {mcp_config['url']} has {len(tools)} tools:\n{tool_list}'
-	# except Exception:
-	# 	response = f"Error executing tool get_capabilities: An issue with retrieving tools"
-	#
-	# return response # fixme
-	return {}
+def get_capabilities(session):
+	try:
+		mcp_config = load_config(session, MCP_CONFIG_FILE)
+		tools = mcp_config['tools']
+		built_in_tools = [
+			{'name': 'get_capabilities', 'description': 'Get a list of all available tools from the MCP server. Use this when someone asks what tools are available.'},
+			{'name': 'get_time', 'description': 'Gets the current datetime'},
+			{'name': 'get_config', 'description': 'Gets the settings for the chat agent'},
+			{'name': 'get_timezone', 'description': 'Gets the users timezone'},
+			{'name': 'log_message', 'description': 'Adds a message to the log file', 'inputSchema': {
+				"additionalProperties": False,
+				"properties": {
+					"sql": {
+						"type": "text",
+						"description": "(str) The text to log"
+					}
+				},
+				"required": [
+					"text"
+				],
+				"type": "object"
+			}}
+		]
+
+		tool_list = '\n'.join([f"- {t.get('name', 'Unknown')}: {t.get('description', 'No description')} | params: {t.get('inputSchema', 'No parameters')}" for t in tools])
+		tool_list += '\n'.join([f"- {t.get('name', 'Unknown')}: {t.get('description', 'No description')} | params: {t.get('inputSchema', 'No parameters')}" for t in built_in_tools])
+		response = f'The MCP server at {mcp_config['url']} has {len(tools)} tools:\n{tool_list}'
+	except Exception:
+		response = f"Error executing tool get_capabilities: An issue with retrieving tools"
+
+	return response
 
 def get_time():
 	return str(datetime.datetime.now())
@@ -87,15 +87,16 @@ def get_time():
 def get_timezone():
 	return time.tzname
 
-def get_config():
-	# return config, mcp_config # fixme
-	return {}
+def get_config(session):
+	config = load_config(session, CONFIG_FILE)
+	mcp_config = load_config(session, MCP_CONFIG_FILE)
+	return config, mcp_config
 
-def log_text(text: str):
+def log_text(session, text: str):
 	try:
-		with open(LOG_FILE, 'a') as log:
+		with open(LOG_FILE + str(session) + ".txt", 'a') as log:
 			log.write(
-				f"a note from the LLM\n"+
+				f"a note from the LLM\n" +
 				f"note: {text}\n\n"
 			)
 		return "success"
@@ -423,19 +424,19 @@ def handle_tool_calls(session, messages, full_response):
 			# Execute the tool
 			if tool_name == 'get_capabilities':
 				# Special handling for get_capabilities - don't call MCP server
-				tool_response = get_capabilities()
+				tool_response = get_capabilities(session)
 			elif tool_name == 'get_time':
 				# Special handling for get_time - don't call MCP server
 				tool_response = get_time()
 			elif tool_name == 'get_config':
 				# Special handling for get_config - don't call MCP server
-				tool_response = get_config()
+				tool_response = get_config(session)
 			elif tool_name == 'get_timezone':
 				# Special handling for get_timezone - don't call MCP server
 				tool_response = get_timezone()
 			elif tool_name == 'log_message':
 				# Special handling for log_message - don't call MCP server
-				tool_response = log_text(tool_args.get('text', "no text provided"))
+				tool_response = log_text(session, tool_args.get('text', "no text provided"))
 			else:
 				tool_response, error = execute_mcp_tool(session, tool_name, tool_args)
 
@@ -780,7 +781,7 @@ def mcp_disconnect():
 	mcp_config = load_config(session, MCP_CONFIG_FILE)
 
 	mcp_config['connectionStatus'] = 'disconnected'
-	mcp_config['tools'] = []
+	mcp_config['tools'] = load_config("default", MCP_CONFIG_FILE)['tools']
 	save_config(session, mcp_config, MCP_CONFIG_FILE)
 	return jsonify({'success': True, 'message': 'Disconnected from MCP server'})
 
