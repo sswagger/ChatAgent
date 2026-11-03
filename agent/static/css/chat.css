@@ -46,7 +46,7 @@
 
 .config-input:focus {
 	outline: none;
-	border-color: #82f43a;
+	border-color: #82f63b;
 }
 
 .config-input::placeholder {
@@ -97,7 +97,7 @@
 
 #token-bar {
 	height: 100%;
-	background: linear-gradient(90deg, #ba8110, #82f43a);
+	background: linear-gradient(90deg, #b98110, #82f63b);
 	width: 0;
 	transition: width 0.3s ease;
 }
@@ -123,7 +123,7 @@
 	width: auto;
 	float: right;
 	padding: 8px 16px;
-	background: #82f43a;
+	background: #82f63b;
 	border-radius: 6px;
 	color: white;
 	font-size: 14px;
@@ -132,7 +132,7 @@
 }
 
 #new-chat-btn:hover {
-	background: #63e924;
+	background: #63eb25;
 }
 
 #chat-header {
@@ -153,7 +153,7 @@
 
 code {
 	font-family: Courier, Consolas, monospace;
-	color: #ba8110;
+	color: #10b981;
 	background-color: #1a1a1a;
 }
 
@@ -176,7 +176,7 @@ blockquote p {
 }
 
 .message a {
-	color: #ba8110;
+	color: #b98110;
 }
 
 strong {
@@ -230,7 +230,7 @@ hr {
 }
 
 .message.user .message-content {
-	background: #82f43a;
+	background: #82f63b;
 	border-bottom-right-radius: 2px;
 	float: right;
 }
@@ -251,7 +251,7 @@ hr {
 .message.user li,
 .message.user a,
 .message.user hr {
-	background: #82f43a;
+	background: #82f63b;
 }
 
 .message.assistant .message-content {
@@ -308,7 +308,7 @@ hr {
 }
 
 #message-input:focus {
-	border-color: #82f43a;
+	border-color: #82f63b;
 }
 
 #message-input::placeholder {
@@ -317,7 +317,7 @@ hr {
 
 #send-btn {
 	padding: 10px 20px;
-	background: #ba8110;
+	background: #b98110;
 	border-radius: 6px;
 	color: white;
 	font-size: 14px;
@@ -329,12 +329,12 @@ hr {
 }
 
 #send-btn:hover {
-	background: #af6b00;
+	background: #ae6b00;
 }
 
 .btn-secondary {
 	padding: 10px 20px;
-	background: #82f43a;
+	background: #82f63b;
 	border: none;
 	border-radius: 6px;
 	color: white;
@@ -343,7 +343,7 @@ hr {
 }
 
 .btn-secondary:hover {
-	background: #63e924;
+	background: #63eb25;
 }
 
 /* Loading indicator */
@@ -419,7 +419,7 @@ hr {
     font-size: 12px;
     font-weight: 600;
 	text-transform: uppercase;
-	background: #ba8110;
+	background: #b98110;
 	color: white;
 	width: fit-content;
 	max-width: 50%;
@@ -429,12 +429,12 @@ hr {
 }
 
 .badge.status-ready {
-	background: #82f43a;
+	background: #82f63b;
 	color: white;
 }
 
 .badge.status-not-ready {
-	background: #ba8110;
+	background: #b98110;
 	color: white;
 }
 
@@ -448,7 +448,7 @@ hr {
 
 .btn-tertiary {
     padding: 8px;
-    background: #ba8110;
+    background: #b98110;
     border: none;
     border-radius: 6px;
     color: white;
@@ -457,7 +457,7 @@ hr {
 }
 
 .btn-tertiary:hover {
-    background: #af6b00;
+    background: #ae6b00;
 }
 
 .rag-stats {
@@ -472,7 +472,7 @@ hr {
 
 .rag-stats span {
     font-weight: bold;
-    color: #ba8110;
+    color: #b98110;
 }
 
 /* RAG sources display */
@@ -498,7 +498,7 @@ hr {
 	background: #2a2a2a;
 	font-size: 12px;
     font-weight: 600;
-    color: #82f43a;
+    color: #82f63b;
 	margin-bottom: 4px;
 }
 
