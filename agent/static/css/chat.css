@@ -40,7 +40,7 @@
 
 .config-input:focus {
 	outline: none;
-	border-color: #f43a82;
+	border-color: #f63b82;
 }
 
 .config-input::placeholder {
@@ -91,7 +91,7 @@
 
 #token-bar {
 	height: 100%;
-	background: linear-gradient(90deg, #8110ba, #f43a82);
+	background: linear-gradient(90deg, #8110b9, #f63b82);
 	width: 0;
 	transition: width 0.3s ease;
 }
@@ -117,7 +117,7 @@
 	width: auto;
 	float: right;
 	padding: 8px 16px;
-	background: #f43a82;
+	background: #f63b82;
 	border-radius: 6px;
 	color: white;
 	font-size: 14px;
@@ -126,7 +126,7 @@
 }
 
 #new-chat-btn:hover {
-	background: #e92463;
+	background: #eb2563;
 }
 
 #chat-header {
@@ -224,7 +224,7 @@ hr {
 }
 
 .message.user .message-content {
-	background: #f43a82;
+	background: #f63b82;
 	border-bottom-right-radius: 2px;
 	float: right;
 }
@@ -245,7 +245,7 @@ hr {
 .message.user li,
 .message.user a,
 .message.user hr {
-	background: #f43a82;
+	background: #f63b82;
 }
 
 .message.assistant .message-content {
@@ -302,7 +302,7 @@ hr {
 }
 
 #message-input:focus {
-	border-color: #f43a82;
+	border-color: #f63b82;
 }
 
 #message-input::placeholder {
@@ -311,7 +311,7 @@ hr {
 
 #send-btn {
 	padding: 10px 20px;
-	background: #8110ba;
+	background: #8110b9;
 	border-radius: 6px;
 	color: white;
 	font-size: 14px;
@@ -323,12 +323,12 @@ hr {
 }
 
 #send-btn:hover {
-	background: #6b00af;
+	background: #6b00ae;
 }
 
 .btn-secondary {
 	padding: 8px 20px;
-	background: #f43a82;
+	background: #f63b82;
 	border: none;
 	border-radius: 6px;
 	color: white;
@@ -337,7 +337,7 @@ hr {
 }
 
 .btn-secondary:hover {
-	background: #e92463;
+	background: #eb2563;
 }
 
 /* Loading indicator */
@@ -421,12 +421,12 @@ hr {
 }
 
 #status-badge.status-connected {
-    background: #8110ba;
+    background: #8110b9;
     color: white;
 }
 
 #status-badge.status-error {
-    background: #f43a82;
+    background: #f63b82;
     color: white;
 }
 
@@ -468,7 +468,7 @@ hr {
     background: #2a2a2a;
     font-size: 12px;
     font-weight: 600;
-    color: #f43a82;
+    color: #f63b82;
     margin-bottom: 4px;
 }
 
@@ -481,7 +481,7 @@ hr {
 
 .btn-tertiary {
     padding: 8px;
-	background: #8110ba;
+	background: #8110b9;
     border: none;
     border-radius: 6px;
     color: white;
@@ -490,5 +490,5 @@ hr {
 }
 
 .btn-tertiary:hover {
-	background: #6b00af;
+	background: #6b00ae;
 }
