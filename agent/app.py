@@ -224,7 +224,7 @@ def call_llm(messages, session, use_tools=False, include_capabilities=False):
 		result = response.json()
 
 		log_actions(session, "call to LLM", payload, result, error=str(response.status_code))
-		return result.get('choices', [{}])[0].get('message', {}), None
+		return result.get('choices', [{}])[0], None
 	except Exception as e:
 		return None, str(e)
 
@@ -474,6 +474,7 @@ def handle_tool_calls(session, messages, full_response):
 		if error:
 			return f"Error: {error}", tool_log
 		if next_response:
+			next_response = next_response.get('message', {})
 			return next_response.get('content', ''), tool_log
 		return message_content, None
 
@@ -495,7 +496,7 @@ def config_endpoint():
 		session = request.headers.get('session')
 		if not session or chat_history.get(session, None) is None:
 			json_response = {'success': False, 'error': 'session not found'}
-			log_actions("error", "/api/config", json_response, str(json_response), request_method=request.method)
+			log_actions(session, "/api/config", json_response, str(json_response), request_method=request.method)
 			return jsonify(json_response)
 
 		config = load_config(session, CONFIG_FILE)
@@ -512,7 +513,7 @@ def config_endpoint():
 		session = data.get('session')
 		if not session or chat_history.get(session, None) is None:
 			json_response = {'success': False, 'error': 'session not found'}
-			log_actions("error", "/api/config", data, str(json_response), request_method=request.method, error="400")
+			log_actions(session, "/api/config", data, str(json_response), request_method=request.method, error="400")
 			return jsonify(json_response), 400
 
 		config = load_config(session, CONFIG_FILE)
@@ -540,7 +541,7 @@ def chat():
 	# ensure session is valid
 	if not session or chat_history.get(session, None) is None:
 		json_response = {'error': 'session not found'}
-		log_actions("error", "/api/chat", data, str(json_response), request_method="POST", error="400")
+		log_actions(session, "/api/chat", data, str(json_response), request_method="POST", error="400")
 		return jsonify(json_response), 400
 	config = load_config(session, CONFIG_FILE)
 	mcp_config = load_config(session, MCP_CONFIG_FILE)
@@ -548,7 +549,7 @@ def chat():
 	# ensure that there is a message
 	if not message:
 		json_response = {'error': 'Message is required'}
-		log_actions("error", "/api/chat", data, str(json_response), request_method="POST", error="400")
+		log_actions(session, "/api/chat", data, str(json_response), request_method="POST", error="400")
 		return jsonify(json_response), 400
 
 	# Add system prompt if this is a new chat
@@ -563,21 +564,27 @@ def chat():
 		chat_history[session] = [chat_history[session][0]] + chat_history[session][-config.get('bufferSize', USER_CONFIG_DEFAULTS['bufferSize']):]
 
 	# Get response from LLM (with tool calling enabled if MCP is enabled)
-	use_tools = mcp_config.get('enabled', False) and mcp_config.get('connected', False)
-	use_capabilities = mcp_config.get('enabled', False)
-	# Include get_capabilities function when MCP is enabled
-	full_response, error = call_llm(chat_history[session], session, use_tools=use_tools, include_capabilities=use_capabilities)
+	is_finished = False
+	response_content = ''
+	called_tools = []
+	while not is_finished:
+		use_tools = mcp_config.get('enabled', False) and mcp_config.get('connected', False)
+		use_capabilities = mcp_config.get('enabled', False)
+		# Include get_capabilities function when MCP is enabled
+		full_response, error = call_llm(chat_history[session], session, use_tools=use_tools, include_capabilities=use_capabilities)
 
-	if error:
-		json_response = {'error': f'Failed to get response= {error}'}
-		log_actions("error", "/api/chat", data, str(json_response), request_method="POST", error="500")
-		return jsonify(json_response), 500
+		if error:
+			json_response = {'error': f'Failed to get response= {error}'}
+			log_actions(session, "/api/chat", data, str(json_response), request_method="POST", error="500")
+			return jsonify(json_response), 500
+		message_response = full_response.get('message', {})
 
-	# Handle tool calls if any
-	response_content, called_tools = handle_tool_calls(session, chat_history[session], full_response)
+		# Handle tool calls if any
+		response_content, called_tools = handle_tool_calls(session, chat_history[session], message_response)
 
-	# Add assistant response
-	chat_history[session].append({'role': 'assistant', 'content': response_content})
+		# Add assistant response
+		chat_history[session].append({'role': 'assistant', 'content': response_content})
+		is_finished = bool(full_response.get('finish_reason') == 'stop')
 
 	# Calculate token usage
 	token_count = get_total_tokens(chat_history[session])
@@ -630,7 +637,7 @@ def token_count():
 
 	if not session or chat_history.get(session, None) is None:
 		json_response = jsonify({'tokenCount': 0})
-		log_actions("error", "/api/token-count", data, str(json_response), request_method="POST")
+		log_actions(session, "/api/token-count", data, str(json_response), request_method="POST")
 		return json_response
 
 	json_response = {'tokenCount': get_total_tokens(chat_history[session])}
@@ -645,7 +652,7 @@ def log_data():
 
 	if not session or chat_history.get(session, None) is None:
 		json_response = {'success': False, 'error': 'session not found'}
-		log_actions("error", "/api/log", data, str(json_response), request_method="POST")
+		log_actions(session, "/api/log", data, str(json_response), request_method="POST")
 		return jsonify(json_response)
 
 	with open(LOG_FILE + session + ".txt", 'a') as log:
@@ -665,7 +672,7 @@ def mcp_config_endpoint():
 		session = request.headers.get('session')
 		if not session or chat_history.get(session, None) is None:
 			json_response = {'success': False, 'error': 'session not found'}
-			log_actions("error", "/api/config", json_response, str(json_response), request_method=request.method)
+			log_actions(session, "/api/config", json_response, str(json_response), request_method=request.method)
 			return jsonify(json_response)
 
 		mcp_config = load_config(session, MCP_CONFIG_FILE)
@@ -681,7 +688,7 @@ def mcp_config_endpoint():
 		session = data.get('session')
 		if not session or chat_history.get(session, None) is None:
 			json_response = {'success': False, 'error': 'session not found'}
-			log_actions("error", "/api/config", data, str(json_response), request_method=request.method, error="400")
+			log_actions(session, "/api/config", data, str(json_response), request_method=request.method, error="400")
 			return jsonify(json_response), 400
 
 		mcp_config = load_config(session, MCP_CONFIG_FILE)
@@ -705,67 +712,70 @@ def mcp_connect():
 	session = data.get('session')
 	if not session or chat_history.get(session, None) is None:
 		json_response = {'success': False, 'error': 'session not found'}
-		log_actions("error", "/api/config", data, str(json_response), request_method=request.method, error="400")
+		log_actions(session, "/api/config", data, str(json_response), request_method=request.method, error="400")
 		return jsonify(json_response), 400
 
 	mcp_config = load_config(session, MCP_CONFIG_FILE)
 
 	url = mcp_config.get('url', '')
 	if not url:
-		return jsonify({'success': False, 'error': 'MCP URL not configured'}), 400
+		json_response = {'success': False, 'error': 'MCP URL not configured'}
+		log_actions(session, "/api/config", data, str(json_response), request_method=request.method, error="400")
+		return jsonify(json_response), 400
 
+	# HTTP/HTTPS connection (standard MCP JSON-RPC)
+	# Test connection by calling tools/list endpoint
 	try:
-		# HTTP/HTTPS connection (standard MCP JSON-RPC)
-		# Test connection by calling tools/list endpoint
-		try:
-			response = request_mcp(
-				session,
-				{
-					"jsonrpc": "2.0",
-					"id": 1,
-					"method": "initialize",
-					"params": {
-						"protocolVersion": "2024-11-05",
-						"capabilities": {},
-						"clientInfo": {
-							"name": "Chat Assistant",
-							"version": "1.0.0"
-						}
+		response = request_mcp(
+			session,
+			{
+				"jsonrpc": "2.0",
+				"id": 1,
+				"method": "initialize",
+				"params": {
+					"protocolVersion": "2024-11-05",
+					"capabilities": {},
+					"clientInfo": {
+						"name": "Chat Assistant",
+						"version": "1.0.0"
 					}
 				}
-			)
-			if type(response) is str:
-				return jsonify({'success': False, 'error': 'initial connection request | {}'.format(response)}), 400
+			}
+		)
+		if type(response) is str:
+			json_response = {'success': False, 'error': f'initial connection request | {response}'}
+			log_actions(session, "/api/config", data, str(json_response), request_method=request.method, error="400")
+			return jsonify(json_response), 400
 
-			mcp_id[session] = response[0].headers["mcp-session-id"]
-			request_mcp(
-				session,
-				{
-					"jsonrpc": "2.0",
-					"method": "notifications/initialized",
-					"params": {}
-				},
-				mcp_id[session]
-			)
-			if type(response) is str:
-				return jsonify({'success': False, 'error': 'second connection request | {}'.format(response)}), 400
+		mcp_id[session] = response[0].headers["mcp-session-id"]
+		request_mcp(
+			session,
+			{
+				"jsonrpc": "2.0",
+				"method": "notifications/initialized",
+				"params": {}
+			},
+			mcp_id[session]
+		)
+		if type(response) is str:
+			json_response = {'success': False, 'error': 'second connection request | {}'.format(response)}
+			log_actions(session, "/api/config", data, str(json_response), request_method=request.method, error="400")
+			return jsonify(json_response), 400
 
-			mcp_config['connectionStatus'] = 'connected'
-			mcp_config['lastError'] = None
-			save_config(session, mcp_config, MCP_CONFIG_FILE)
-			return jsonify({'success': True, 'message': 'Connected to MCP server', 'sessionId': mcp_id[session]})
-
-		except Exception as e:
-			mcp_config['connectionStatus'] = 'error'
-			mcp_config['lastError'] = str(e)
-			save_config(session, mcp_config, MCP_CONFIG_FILE)
-			return jsonify({'success': False, 'error': str(e)}), 500
+		mcp_config['connectionStatus'] = 'connected'
+		mcp_config['lastError'] = None
+		save_config(session, mcp_config, MCP_CONFIG_FILE)
+		json_response = {'success': True, 'message': 'Connected to MCP server', 'sessionId': mcp_id[session]}
+		log_actions(session, "/api/config", data, str(json_response), request_method=request.method, error="400")
+		return jsonify(json_response)
 
 	except Exception as e:
 		mcp_config['connectionStatus'] = 'error'
 		mcp_config['lastError'] = str(e)
 		save_config(session, mcp_config, MCP_CONFIG_FILE)
-		return jsonify({'success': False, 'error': str(e)}), 500
+		json_response = {'success': False, 'error': str(e)}
+		log_actions(session, "/api/config", data, str(json_response), request_method=request.method, error="500")
+		return jsonify(json_response), 500
 
 
 @app.route('/api/mcp/disconnect', methods=['POST'])
@@ -775,7 +785,7 @@ def mcp_disconnect():
 	session = data.get('session')
 	if not session or chat_history.get(session, None) is None:
 		json_response = {'success': False, 'error': 'session not found'}
-		log_actions("error", "/api/config", data, str(json_response), request_method=request.method, error="400")
+		log_actions(session, "/api/config", data, str(json_response), request_method=request.method, error="400")
 		return jsonify(json_response), 400
 
 	mcp_config = load_config(session, MCP_CONFIG_FILE)
@@ -793,7 +803,7 @@ def mcp_tools():
 	session = request.headers.get('session')
 	if not session or chat_history.get(session, None) is None:
 		json_response = {'success': False, 'error': 'session not found'}
-		log_actions("error", "/api/config", json_response, str(json_response), request_method=request.method)
+		log_actions(session, "/api/config", json_response, str(json_response), request_method=request.method)
 		return jsonify(json_response)
 
 	mcp_config = load_config(session, MCP_CONFIG_FILE)
@@ -838,7 +848,7 @@ def mcp_execute():
 	session = data.get('session')
 	if not session or chat_history.get(session, None) is None:
 		json_response = {'success': False, 'error': 'session not found'}
-		log_actions("error", "/api/config", data, str(json_response), request_method=request.method, error="400")
+		log_actions(session, "/api/config", data, str(json_response), request_method=request.method, error="400")
 		return jsonify(json_response), 400
 
 	tool_name = data.get('tool', '')
