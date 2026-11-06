@@ -169,7 +169,7 @@ async function sendMessage() {
 		}
 
 		// Add assistant response to UI
-		if (data.calledTools) {
+		if (data.calledTools && data.calledTools.length > 0) {
 			addMessageToUI('system', data.calledTools.join("\n"));
 		}
 		addMessageToUI('assistant', data.response);

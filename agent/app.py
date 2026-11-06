@@ -410,7 +410,6 @@ def execute_mcp_tool(session, tool_name, tool_input):
 
 def handle_tool_calls(session, messages, full_response):
 	"""Handle tool calls from LLM response."""
-	message_content = full_response.get('content', '')
 	tool_calls = full_response.get('tool_calls', [])
 	tool_log = []
 
@@ -469,16 +468,15 @@ def handle_tool_calls(session, messages, full_response):
 					'content': str(tool_response)
 				})
 
-		# Get next response from LLM
-		next_response, error = call_llm(messages, session, use_tools=False)
-		if error:
-			return f"Error: {error}", tool_log
-		if next_response:
-			next_response = next_response.get('message', {})
-			return next_response.get('content', ''), tool_log
-		return message_content, None
+		return tool_log
+		# # Get next response from LLM
+		# next_response, error = call_llm(messages, session, use_tools=False)
+		# if error:
+		# 	return f"Error: {error}", tool_log
+		# if next_response:
+		# 	return next_response, tool_log
 
-	return message_content, None
+	return None
 
 # Flask endpoint
 @app.route('/')
@@ -567,7 +565,8 @@ def chat():
 	is_finished = False
 	response_content = ''
 	called_tools = []
-	while not is_finished:
+	counter = 0
+	while not is_finished and counter < 10:
 		use_tools = mcp_config.get('enabled', False) and mcp_config.get('connected', False)
 		use_capabilities = mcp_config.get('enabled', False)
 		# Include get_capabilities function when MCP is enabled
@@ -580,11 +579,20 @@ def chat():
 		message_response = full_response.get('message', {})
 
 		# Handle tool calls if any
-		response_content, called_tools = handle_tool_calls(session, chat_history[session], message_response)
+		tools_used = handle_tool_calls(session, chat_history[session], message_response)
+
+		if tools_used:
+			called_tools.append(tools_used)
+		response_words = message_response.get('content')
+		if response_words:
+			response_content += response_words
 
 		# Add assistant response
 		chat_history[session].append({'role': 'assistant', 'content': response_content})
 		is_finished = bool(full_response.get('finish_reason') == 'stop')
+		if not is_finished and response_words:
+			response_content += "\n\n___\n\n"
+		counter += 1
 
 	# Calculate token usage
 	token_count = get_total_tokens(chat_history[session])
