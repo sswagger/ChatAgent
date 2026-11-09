@@ -31,6 +31,14 @@ const mcpStatusBadge = document.getElementById('status-badge');
 const mcpToolsList = document.getElementById('mcpToolsList');
 const refreshToolsBtn = document.getElementById('refreshToolsBtn');
 
+// Skill DOM Elements
+const skillSection = document.getElementById('skill-editor');
+const chatSection = document.getElementById('chat-section');
+const newSkill = document.getElementById('add-skill');
+const textEditor = document.getElementById('text-editor');
+const mdViewer = document.getElementById('skill-preview');
+const saveSkill = document.getElementById('save-skill-btn');
+
 // Initialize
 async function init() {
 	try {
@@ -236,6 +244,7 @@ function updateTokenDisplay(count) {
 
 // Start new chat
 async function startNewChat() {
+	hideSkills()
 	try {
 		const response = await fetch('/api/new-chat', {
 			method: 'POST',
@@ -421,6 +430,29 @@ async function refreshTools() {
     }
 }
 
+//=== Skills ===\\
+function hideSkills() {
+	skillSection.style.display = 'none';
+	chatSection.style.display = 'flex';
+	saveSkill.style.display = 'none';
+	newChatBtn.style.display = 'block';
+}
+
+function showSkills() {
+	skillSection.style.display = "flex";
+	chatSection.style.display = "none";
+	saveSkill.style.display = 'block';
+	newChatBtn.style.display = 'none';
+}
+
+function updateMd() {
+	mdViewer.innerHTML = marked.parse(textEditor.innerText)
+}
+
+async function loadSkills() {
+	// todo: make request for skills and put them into #skills-list
+}
+
 // Event Listeners
 sendBtn.addEventListener('click', sendMessage);
 
@@ -464,5 +496,28 @@ mcpConnectBtn.addEventListener('click', connectMCP);
 mcpDisconnectBtn.addEventListener('click', disconnectMCP);
 refreshToolsBtn.addEventListener('click', refreshTools);
 
+newSkill.addEventListener('click', function () {
+	showSkills();
+	textEditor.innerText = "# Brand New Skill!!";
+});
+saveSkill.addEventListener('click', function () {
+	hideSkills();
+	// todo: post the contents of the file
+});
+// todo: add event listeners for click on a skill block (similar to clicking on a document in feature/rag)
+
+const observer = new MutationObserver(() => {
+    updateMd();
+});
+observer.observe(textEditor, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+    attributes: true,
+    characterDataOldValue: true
+});
+
+// Initialize mark down display on load
+updateMd();
 // Initialize on load
 init();
