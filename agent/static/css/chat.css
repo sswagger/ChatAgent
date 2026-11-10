@@ -518,9 +518,16 @@ hr {
 	border-radius: 6px;
 	padding: 10px;
 	margin-bottom: 8px;
+	display: table;
+}
+
+.skill-item:after {
+	content: "";
 }
 
 .skill-name {
+	float: left;
+	width: 75%;
 	background: #2a2a2a;
 	font-size: 12px;
     font-weight: 600;
@@ -529,10 +536,22 @@ hr {
 }
 
 .skill-info {
+	float: left;
+	width: 75%;
     background: #2a2a2a;
 	font-size: 10px;
 	color: #666;
 	line-height: 1.4;
+}
+
+.skill-delete img, .skill-delete a {
+	background-color: #2a2a2a;
+}
+
+.skill-delete {
+	background-color: #2a2a2a;
+	width: 10%;
+	float: right;
 }
 
 #skill-editor {

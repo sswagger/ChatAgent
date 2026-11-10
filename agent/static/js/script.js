@@ -1,12 +1,14 @@
 // MCP configuration
 let apiKey = '';
-let tools = []
+let tools = [];
+let skills = {};
 let connected = 'disconnected';
+let isNewSkill = false
 
 // Chat configuration
 let tokenCount = 0;
 let sessionId = "";
-let userMessages = []
+let userMessages = [];
 let userMessageIndex = 0;
 
 // DOM Elements
@@ -20,6 +22,7 @@ const saveConfigBtn = document.getElementById('save-config-btn');
 const newChatBtn = document.getElementById('new-chat-btn');
 const tokenCountDisplay = document.getElementById('token-count');
 const tokenBar = document.getElementById('token-bar');
+const chatTitle = document.getElementById('chat-title');
 
 // MCP DOM Elements
 const mcpConnectBtn = document.getElementById('mcpConnectBtn');
@@ -32,12 +35,15 @@ const mcpToolsList = document.getElementById('mcpToolsList');
 const refreshToolsBtn = document.getElementById('refreshToolsBtn');
 
 // Skill DOM Elements
-const skillSection = document.getElementById('skill-editor');
+const skillEditorSection = document.getElementById('skill-editor');
 const chatSection = document.getElementById('chat-section');
-const newSkill = document.getElementById('add-skill');
-const textEditor = document.getElementById('text-editor');
-const mdViewer = document.getElementById('skill-preview');
-const saveSkill = document.getElementById('save-skill-btn');
+const newSkillBtn = document.getElementById('add-skill');
+const textEditorDiv = document.getElementById('text-editor');
+const mdViewerDiv = document.getElementById('skill-preview');
+const saveSkillBtn = document.getElementById('save-skill-btn');
+const skillsListDiv = document.getElementById('skills-list');
+const skillTitleInput = document.getElementById('skill-title');
+const skillIdInput = document.getElementById('skill-id');
 
 // Initialize
 async function init() {
@@ -68,6 +74,7 @@ async function init() {
 
 		await disconnectMCP()
 		updateMcpUI();
+		loadSkills();
 
         addMessageToUI('system', 'System initialized with configured system prompt.');
 	} catch (error) {
@@ -244,7 +251,7 @@ function updateTokenDisplay(count) {
 
 // Start new chat
 async function startNewChat() {
-	hideSkills()
+	hideSkills("AI Chat Assistant (MCP)")
 	try {
 		const response = await fetch('/api/new-chat', {
 			method: 'POST',
@@ -431,26 +438,160 @@ async function refreshTools() {
 }
 
 //=== Skills ===\\
-function hideSkills() {
-	skillSection.style.display = 'none';
+// hide skills section and show chat section
+function hideSkills(title) {
+	skillEditorSection.style.display = 'none';
 	chatSection.style.display = 'flex';
-	saveSkill.style.display = 'none';
+	saveSkillBtn.style.display = 'none';
 	newChatBtn.style.display = 'block';
+	chatTitle.innerText = title;
+	skillTitleInput.disabled = true;
 }
 
-function showSkills() {
-	skillSection.style.display = "flex";
+// show skills section and hide chat section
+function showSkills(content, title) {
+	skillEditorSection.style.display = "flex";
 	chatSection.style.display = "none";
-	saveSkill.style.display = 'block';
+	saveSkillBtn.style.display = 'block';
 	newChatBtn.style.display = 'none';
+	textEditorDiv.innerText = content;
+	chatTitle.innerText = title;
+	skillTitleInput.disabled = false;
 }
 
+// update the mark-down viewer
 function updateMd() {
-	mdViewer.innerHTML = marked.parse(textEditor.innerText)
+	mdViewerDiv.innerHTML = marked.parse(textEditorDiv.innerText)
 }
 
+// load the skills into the ui
 async function loadSkills() {
-	// todo: make request for skills and put them into #skills-list
+	try {
+		// Load regular config
+		const response = await fetch('/api/skill', {
+			method: 'GET',
+			headers: {'Content-Type': 'application/json', 'session': sessionId},
+		});
+		const data = await response.json();
+
+		skillsListDiv.innerHTML = "";
+
+		if (data.skills && data.skills.length > 0) {
+			data.skills.forEach(skill => {
+				const skillDiv = document.createElement("div");
+				skillDiv.className = "skill-item";
+				skillDiv.innerHTML = `
+					<div class="skill-name">${skill.title}</div>
+					<div class="skill-delete"><a><img src="/static/img/trash_can.png" alt="Delete" /></a></div>
+					<div class="skill-info">Id: ${skill.id}</div>
+				`;
+				skillsListDiv.appendChild(skillDiv);
+
+				skills[skill.title] = {'Id': skill.id, 'Title': skill.title, 'Contents': skill.content, 'isSelected': false};
+			});
+
+			// add click event to documents
+			document.querySelectorAll(".skill-item").forEach(skill => {
+				skill.addEventListener('click', function() {
+					isNewSkill = false
+					let selectedSkill = skills[skill.firstElementChild.innerText];
+					// remove border color to all skills
+					skillsListDiv.childNodes.forEach(e => {
+						e.style.borderColor = "#333";
+					});
+
+					if (!selectedSkill["isSelected"]) {
+						Object.values(skills).forEach(value => {
+							value["isSelected"] = false;
+						});
+
+						// update docBadge and add border color
+						skill.style.borderColor = "#f63b82";
+
+						selectedSkill["isSelected"] = true;
+						skillTitleInput.value = selectedSkill["Title"];
+						showSkills(selectedSkill["Contents"], "Editing Skill: " + selectedSkill["Title"]);
+						skillIdInput.value = selectedSkill["Id"];
+					}
+					else {
+						selectedSkill["isSelected"] = false;
+						skillTitleInput.value = "";
+						hideSkills("AI Chat Assistant (MCP)");
+						skillIdInput.value = "";
+					}
+				});
+			});
+
+			document.querySelectorAll(".skill-delete").forEach(skill => {
+				skill.addEventListener('click', async function() {
+					isNewSkill = false
+					let selectedSkill = skills[skill.parentElement.firstElementChild.innerText];
+					// remove border color to all skills
+					skillsListDiv.childNodes.forEach(e => {
+						e.style.borderColor = "#333";
+					});
+
+					let confirmDelete = window.confirm("Delete this skill?")
+					if (confirmDelete) {
+						const response = await fetch('/api/skill/delete', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								id: selectedSkill["Id"],
+								session: sessionId
+							})
+						});
+
+						if (response.ok) {
+							await loadSkills();
+							addMessageToUI("system", "Successfully deleted skill");
+
+							await startNewChat();
+						}
+					}
+				});
+			});
+		}
+	}
+	catch (error) {
+		addMessageToUI("system", "Failed to refresh documents:" + error);
+	}
+}
+
+// save skills
+async function saveSkill() {
+	console.log(skills)
+	if (isNewSkill) {
+		if (skills[skillTitleInput.value.trim()]) {
+			return false;
+		}
+	}
+	isNewSkill = false;
+
+	try {
+		const response = await fetch('/api/skill/upload', {
+			method: 'POST',
+			headers: {'Content-Type': 'application/json'},
+			body: JSON.stringify({
+				title: skillTitleInput.value.trim(),
+				content: textEditorDiv.innerText,
+				id: skillIdInput.value.trim(),
+				session: sessionId
+			})
+		});
+
+		const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to upload skill');
+        }
+
+		return true;
+	}
+	catch (error) {
+        addMessageToUI('system', `Error connecting to MCP: ${error.message}`);
+		return false;
+	}
 }
 
 // Event Listeners
@@ -496,20 +637,53 @@ mcpConnectBtn.addEventListener('click', connectMCP);
 mcpDisconnectBtn.addEventListener('click', disconnectMCP);
 refreshToolsBtn.addEventListener('click', refreshTools);
 
-newSkill.addEventListener('click', function () {
-	showSkills();
-	textEditor.innerText = "# Brand New Skill!!";
+// new skill
+newSkillBtn.addEventListener('click', function () {
+	// set headers
+	showSkills("# Brand New Skill!!", "New Skill: New Skill");
+	// set inputs
+	skillTitleInput.value = "New Skill";
+	skillIdInput.value = "";
+	isNewSkill = true;
+
+	// deselect all skills
+	skillsListDiv.childNodes.forEach(e => {
+		e.style.borderColor = "#333";
+	});
+	Object.values(skills).forEach(value => {
+		value["isSelected"] = false;
+	});
 });
-saveSkill.addEventListener('click', function () {
-	hideSkills();
-	// todo: post the contents of the file
+// save button
+saveSkillBtn.addEventListener('click', async function () {
+	// save and get skills
+	let successSave = await saveSkill();
+	await loadSkills();
+
+	if (successSave) {
+		// show chat
+		hideSkills("AI Chat Assistant (MCP)");
+		// set inputs
+		skillTitleInput.value = "";
+		skillIdInput.value = ""
+
+		// deselect all skills
+		skillsListDiv.childNodes.forEach(e => {
+			e.style.borderColor = "#333";
+		});
+		Object.values(skills).forEach(value => {
+			value["isSelected"] = false;
+		});
+	}
+	else {
+		alert("Title must be unique");
+	}
 });
-// todo: add event listeners for click on a skill block (similar to clicking on a document in feature/rag)
 
 const observer = new MutationObserver(() => {
     updateMd();
 });
-observer.observe(textEditor, {
+observer.observe(textEditorDiv, {
     childList: true,
     subtree: true,
     characterData: true,

@@ -103,6 +103,9 @@ def log_text(session, text: str):
 	except Exception:
 		return "failed to log message"
 
+def use_skill(session):
+	pass
+
 #=== Agent Functions ===#
 def estimate_tokens(text):
 	"""Estimate token count using tiktoken."""
@@ -871,6 +874,80 @@ def mcp_execute():
 		return jsonify({'success': False, 'error': error}), 500
 
 	return jsonify({'success': True, 'output': output})
+
+
+@app.route('/api/skill', methods=['GET'])
+def skills():
+	session = request.headers.get('session')
+	if not session or chat_history.get(session, None) is None:
+		json_response = {'success': False, 'error': 'session not found'}
+		log_actions(session, "/api/config", '', str(json_response), request_method=request.method)
+		return jsonify(json_response)
+
+	mcp_config = load_config(session, MCP_CONFIG_FILE)
+
+	json_response = {'success': True, 'skills': mcp_config.get('skills', [])}
+	log_actions(session, "/api/config", '', str(json_response), request_method=request.method)
+	return jsonify(json_response)
+
+
+@app.route('/api/skill/upload', methods=['POST'])
+def skill_upload():
+	data = request.json
+	session = data.get('session')
+	if not session or chat_history.get(session, None) is None:
+		json_response = {'success': False, 'error': 'session not found'}
+		log_actions(session, "/api/config", data, str(json_response), request_method=request.method)
+		return jsonify(json_response)
+
+	mcp_config = load_config(session, MCP_CONFIG_FILE)
+
+	if data.get('id', None):
+		new_skill = {'id': int(data['id']), 'title': data['title'], 'content': data['content']}
+
+		counter = 0
+		for skill in mcp_config.get('skills', []):
+			if int(skill['id']) == int(data['id']):
+				mcp_config['skills'][counter] = new_skill
+			counter += 1
+	else:
+		new_skill = {'id': int(len(mcp_config.get('skills', []))), 'title': data['title'], 'content': data['content']}
+		mcp_config["skills"].append(new_skill)
+
+	save_config(session, mcp_config, MCP_CONFIG_FILE)
+
+	json_response = {'success': True, 'message': "successfully uploaded skill"}
+	log_actions(session, "/api/config", data, str(json_response), request_method=request.method)
+	return jsonify(json_response)
+
+
+@app.route('/api/skill/delete', methods=['POST'])
+def skill_delete():
+	data = request.json
+	session = data.get('session')
+	if not session or chat_history.get(session, None) is None:
+		json_response = {'success': False, 'error': 'session not found'}
+		log_actions(session, "/api/config", data, str(json_response), request_method=request.method)
+		return jsonify(json_response)
+
+	mcp_config = load_config(session, MCP_CONFIG_FILE)
+
+	if data.get('id', None) is not None:
+		counter = 0
+		for skill in mcp_config.get('skills', []):
+			if int(skill['id']) == int(data['id']):
+				mcp_config['skills'].pop(counter)
+			counter += 1
+	else:
+		json_response = {'success': False, 'error': 'no document id'}
+		log_actions(session, "/api/config", data, str(json_response), request_method=request.method)
+		return jsonify(json_response)
+
+	save_config(session, mcp_config, MCP_CONFIG_FILE)
+
+	json_response = {'success': True, 'message': "successfully uploaded skill"}
+	log_actions(session, "/api/config", data, str(json_response), request_method=request.method)
+	return jsonify(json_response)
 
 
 if __name__ == '__main__':
