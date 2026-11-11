@@ -607,7 +607,14 @@ def chat():
 
 	# Add system prompt if this is a new chat
 	if len(chat_history[session]) == 0:
-		chat_history[session].append({'role': 'system', 'content': config.get('systemPrompt', USER_CONFIG_DEFAULTS['systemPrompt'])})
+		rules = []
+		for i in mcp_config.get('skills', []):
+			if i.get('rule', False):
+				rules.append(i)
+		if len(rules) > 0:
+			chat_history[session].append({'role': 'system', 'content': config.get('systemPrompt', USER_CONFIG_DEFAULTS['systemPrompt']) + "\n\nUser has provided the following rules. You just follow them at **ALL** times: " + str(rules)})
+		else:
+			chat_history[session].append({'role': 'system', 'content': config.get('systemPrompt', USER_CONFIG_DEFAULTS['systemPrompt'])})
 
 	# Add user message
 	chat_history[session].append({'role': 'user', 'content': message})
@@ -680,8 +687,17 @@ def new_chat():
 		return jsonify(json_response)
 	else:
 		config = load_config(session, CONFIG_FILE)
+		mcp_config = load_config(session, MCP_CONFIG_FILE)
 		chat_history[session] = []
-		chat_history[session].append({'role': 'system', 'content': config['systemPrompt']})
+
+		rules = []
+		for i in mcp_config.get('skills', []):
+			if i.get('rule', False):
+				rules.append(i)
+		if len(rules) > 0:
+			chat_history[session].append({'role': 'system', 'content': config.get('systemPrompt', USER_CONFIG_DEFAULTS['systemPrompt']) + "\n\nUser has provided the following rules. You must follow them at **ALL** times: " + str(rules)})
+		else:
+			chat_history[session].append({'role': 'system', 'content': config.get('systemPrompt', USER_CONFIG_DEFAULTS['systemPrompt'])})
 
 		json_response = {
 			'success': True,
@@ -955,7 +971,7 @@ def skill_upload():
 	mcp_config = load_config(session, MCP_CONFIG_FILE)
 
 	if data.get('id', None):
-		new_skill = {'id': int(data['id']), 'title': data['title'], 'content': data['content']}
+		new_skill = {'id': int(data['id']), 'title': data['title'], 'content': data['content'], 'rule': data['rule']}
 
 		counter = 0
 		for skill in mcp_config.get('skills', []):
@@ -963,7 +979,7 @@ def skill_upload():
 				mcp_config['skills'][counter] = new_skill
 			counter += 1
 	else:
-		new_skill = {'id': int(len(mcp_config.get('skills', []))), 'title': data['title'], 'content': data['content']}
+		new_skill = {'id': int(len(mcp_config.get('skills', []))), 'title': data['title'], 'content': data['content'], 'rule': data['rule']}
 		mcp_config["skills"].append(new_skill)
 
 	save_config(session, mcp_config, MCP_CONFIG_FILE)

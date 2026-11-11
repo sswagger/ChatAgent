@@ -1,5 +1,4 @@
 // MCP configuration
-let apiKey = '';
 let tools = [];
 let skills = {};
 let connected = 'disconnected';
@@ -44,6 +43,7 @@ const saveSkillBtn = document.getElementById('save-skill-btn');
 const skillsListDiv = document.getElementById('skills-list');
 const skillTitleInput = document.getElementById('skill-title');
 const skillIdInput = document.getElementById('skill-id');
+const skillRuleInput = document.getElementById('make-rule');
 
 // Initialize
 async function init() {
@@ -74,7 +74,7 @@ async function init() {
 
 		await disconnectMCP()
 		updateMcpUI();
-		loadSkills();
+		await loadSkills();
 
         addMessageToUI('system', 'System initialized with configured system prompt.');
 	} catch (error) {
@@ -88,7 +88,6 @@ async function saveConfig() {
 	const newBufferSize = parseInt(bufferSizeInput.value);
 	const newTemperature = parseFloat(temperatureInput.value);
 	const newMcpUrl = mcpUrlInput.value.trim();
-	const newMcpApiKey = mcpId.value.trim();
 	const newMcpEnabled = mcpEnabledCheckbox.checked;
 
 	// validate form
@@ -121,12 +120,10 @@ async function saveConfig() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 url: newMcpUrl,
-                apiKey: newMcpApiKey,
                 enabled: newMcpEnabled,
 				session: sessionId
             })
         });
-        apiKey = newMcpApiKey;
 
 		let data = response.json();
 
@@ -446,6 +443,10 @@ function hideSkills(title) {
 	newChatBtn.style.display = 'block';
 	chatTitle.innerText = title;
 	skillTitleInput.disabled = true;
+	skillRuleInput.disabled = true;
+	skillRuleInput.checked = false;
+	skillTitleInput.value = "";
+	skillIdInput.value = "";
 }
 
 // show skills section and hide chat section
@@ -457,11 +458,12 @@ function showSkills(content, title) {
 	textEditorDiv.innerText = content;
 	chatTitle.innerText = title;
 	skillTitleInput.disabled = false;
+	skillRuleInput.disabled = false;
 }
 
 // update the mark-down viewer
 function updateMd() {
-	mdViewerDiv.innerHTML = marked.parse(textEditorDiv.innerText)
+	mdViewerDiv.innerHTML = marked.parse(textEditorDiv.innerText);
 }
 
 // load the skills into the ui
@@ -487,13 +489,13 @@ async function loadSkills() {
 				`;
 				skillsListDiv.appendChild(skillDiv);
 
-				skills[skill.title] = {'Id': skill.id, 'Title': skill.title, 'Contents': skill.content, 'isSelected': false};
+				skills[skill.title] = {'Id': skill.id, 'Title': skill.title, 'Contents': skill.content, 'isSelected': false, 'isRule': skill.rule};
 			});
 
 			// add click event to documents
 			document.querySelectorAll(".skill-item").forEach(skill => {
 				skill.addEventListener('click', function() {
-					isNewSkill = false
+					isNewSkill = false;
 					let selectedSkill = skills[skill.firstElementChild.innerText];
 					// remove border color to all skills
 					skillsListDiv.childNodes.forEach(e => {
@@ -510,28 +512,27 @@ async function loadSkills() {
 
 						selectedSkill["isSelected"] = true;
 						skillTitleInput.value = selectedSkill["Title"];
+						skillRuleInput.checked = selectedSkill["isRule"];
 						showSkills(selectedSkill["Contents"], "Editing Skill: " + selectedSkill["Title"]);
 						skillIdInput.value = selectedSkill["Id"];
 					}
 					else {
 						selectedSkill["isSelected"] = false;
-						skillTitleInput.value = "";
 						hideSkills("AI Chat Assistant (MCP)");
-						skillIdInput.value = "";
 					}
 				});
 			});
 
 			document.querySelectorAll(".skill-delete").forEach(skill => {
 				skill.addEventListener('click', async function() {
-					isNewSkill = false
+					isNewSkill = false;
 					let selectedSkill = skills[skill.parentElement.firstElementChild.innerText];
 					// remove border color to all skills
 					skillsListDiv.childNodes.forEach(e => {
 						e.style.borderColor = "#333";
 					});
 
-					let confirmDelete = window.confirm("Delete this skill?")
+					let confirmDelete = window.confirm("Delete this skill?");
 					if (confirmDelete) {
 						const response = await fetch('/api/skill/delete', {
 							method: 'POST',
@@ -560,7 +561,7 @@ async function loadSkills() {
 
 // save skills
 async function saveSkill() {
-	console.log(skills)
+	console.log(skills);
 	if (isNewSkill) {
 		if (skills[skillTitleInput.value.trim()]) {
 			return false;
@@ -576,6 +577,7 @@ async function saveSkill() {
 				title: skillTitleInput.value.trim(),
 				content: textEditorDiv.innerText,
 				id: skillIdInput.value.trim(),
+				rule: skillRuleInput.checked,
 				session: sessionId
 			})
 		});
@@ -644,6 +646,7 @@ newSkillBtn.addEventListener('click', function () {
 	// set inputs
 	skillTitleInput.value = "New Skill";
 	skillIdInput.value = "";
+	skillRuleInput.checked = false;
 	isNewSkill = true;
 
 	// deselect all skills
@@ -663,9 +666,6 @@ saveSkillBtn.addEventListener('click', async function () {
 	if (successSave) {
 		// show chat
 		hideSkills("AI Chat Assistant (MCP)");
-		// set inputs
-		skillTitleInput.value = "";
-		skillIdInput.value = ""
 
 		// deselect all skills
 		skillsListDiv.childNodes.forEach(e => {
