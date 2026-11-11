@@ -61,13 +61,27 @@ def get_capabilities(session):
 			{'name': 'log_message', 'description': 'Adds a message to the log file', 'inputSchema': {
 				"additionalProperties": False,
 				"properties": {
-					"sql": {
-						"type": "text",
+					"text": {
+						"type": "string",
 						"description": "(str) The text to log"
 					}
 				},
 				"required": [
 					"text"
+				],
+				"type": "object"
+			}},
+			{'name': 'get_skills', 'description': 'Returns the titles of all the user-provided skills'},
+			{'name': 'use_skill', 'description': 'Returns the contents of one skill file', 'inputSchema': {
+				"additionalProperties": False,
+				"properties": {
+					"title": {
+						"type": "string",
+						"description": "the title of the skill"
+					}
+				},
+				"required": [
+					"title"
 				],
 				"type": "object"
 			}}
@@ -103,8 +117,24 @@ def log_text(session, text: str):
 	except Exception:
 		return "failed to log message"
 
-def use_skill(session):
-	pass
+def get_skills(session):
+	mcp_config = load_config(session, MCP_CONFIG_FILE)
+	titles = []
+
+	for i in mcp_config['skills']:
+		titles.append(i['title'])
+
+	return titles
+
+def use_skill(session, title: str):
+	mcp_config = load_config(session, MCP_CONFIG_FILE)
+
+	for skill in mcp_config['skills']:
+		if skill['title'] == title:
+			return skill['content']
+
+	return ''
+
 
 #=== Agent Functions ===#
 def estimate_tokens(text):
@@ -216,6 +246,28 @@ def call_llm(messages, session, use_tools=False, include_capabilities=False):
 				'parameters': {
 					'type': 'object',
 					'properties': {'text': {'type': 'string', 'description': '(str) message you want to log'}}
+				}
+			}
+		})
+		tools.append({
+			'type': 'function',
+			'function': {
+				'name': 'get_skills',
+				'description': 'Returns the titles of all the user-provided skills',
+				'parameters': {
+					'type': 'object',
+					'properties': {}
+				}
+			}
+		})
+		tools.append({
+			'type': 'function',
+			'function': {
+				'name': 'use_skill',
+				'description': 'Returns the contents of one skill file',
+				'parameters': {
+					'type': 'object',
+					'properties': {'title': {'type': 'string', 'description': 'the title of the skill'}}
 				}
 			}
 		})
@@ -439,6 +491,12 @@ def handle_tool_calls(session, messages, full_response):
 			elif tool_name == 'log_message':
 				# Special handling for log_message - don't call MCP server
 				tool_response = log_text(session, tool_args.get('text', "no text provided"))
+			elif tool_name == 'get_skills':
+				# Special handling for get_skills - don't call MCP server
+				tool_response = get_skills(session)
+			elif tool_name == 'use_skill':
+				# Special handling for log_message - don't call MCP server
+				tool_response = use_skill(session, tool_args.get('title', ""))
 			else:
 				tool_response, error = execute_mcp_tool(session, tool_name, tool_args)
 
@@ -472,12 +530,6 @@ def handle_tool_calls(session, messages, full_response):
 				})
 
 		return tool_log
-		# # Get next response from LLM
-		# next_response, error = call_llm(messages, session, use_tools=False)
-		# if error:
-		# 	return f"Error: {error}", tool_log
-		# if next_response:
-		# 	return next_response, tool_log
 
 	return None
 
