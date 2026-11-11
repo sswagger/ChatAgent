@@ -79,9 +79,9 @@ The contents should be as follows:
         "inputSchema": {
           "additionalProperties": false,
           "properties": {
-            "sql": {
-              "type": "text",
-              "description": "(str) The text to log"
+            "text": {
+              "type": "string",
+              "description": "The text to log"
             }
           },
           "required": [
@@ -89,8 +89,30 @@ The contents should be as follows:
           ],
           "type": "object"
         }
+      },
+      {
+          "name": "get_skills",
+          "description": "Returns the titles of all the user-provided skills"
+      },
+      {
+          "name": "use_skill",
+          "description": "Returns the contents of one skill file",
+          "inputSchema": {
+              "additionalProperties": false,
+              "properties": {
+                  "title": {
+                      "type": "string",
+                      "description": "The title of the skill"
+                  }
+              },
+              "required": [
+                  "title"
+              ],
+              "type": "object"
+          }
       }
     ],
+    "skills": [],
     "lastError": null,
     "systemPrompt": "IMPORTANT: This application has access to an MCP (Model Context Protocol) server that provides tools. When asked what the MCP server can do, or what tools are available, you MUST call the get_capabilities function to retrieve the list of available tools. Do NOT just make up a response. The get_capabilities function will return a list of all available tools with their descriptions.\n"
   }
